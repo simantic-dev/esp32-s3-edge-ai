@@ -1,0 +1,25 @@
+#!/bin/sh
+# Edge AI on a simulated ESP32-S3. Usage: ./demo person | speech | live [seconds]
+# Uses `sim` from PATH; SIM=/path/to/sim overrides.
+set -eu
+SIM="${SIM:-sim}"
+cd "$(dirname "$0")"
+command -v "$SIM" >/dev/null || { echo "sim not found. Install it: curl -fsSL https://simantic.com/install | sh" >&2; exit 1; }
+case "$("$SIM" --version 2>/dev/null)" in
+  "sim 0.10.0"*|"sim 0.9."*|"sim 0.8."*) echo "note: these demos need sim 0.10.1 or newer; found $("$SIM" --version)" >&2 ;;
+esac
+
+run() {  # run <dir> <mcu> <board> <seconds> <lines to show> [extra sim flags]
+  dir=$1 mcu=$2 board=$3 secs=$4 show=$5; shift 5
+  cd "$dir"
+  "$SIM" "$mcu" run "$@" --elf flash.bin --board "$board" --ascii uart0 --only-messages --timeout "$secs" 2>&1 \
+    | grep --line-buffered -E "$show"
+}
+
+case "${1:-}" in
+  person) run person-detection ESP32-S3FN8 console.board 2.7 'detect_image|Total time|person score|Elapsed' ;;
+  speech) run keyword-spotting ESP32-S3-WROOM-1-N16R8 mic.board 4 'Recording started|Detected  |Elapsed' ;;
+  live)   echo "Say yes or no. Ctrl-C to stop." >&2
+          run keyword-spotting ESP32-S3-WROOM-1-N16R8 live.board "${2:-60}" 'Recording started|Detected  ' --real-time ;;
+  *) echo "usage: ./demo person | speech | live [seconds]" >&2; exit 2 ;;
+esac

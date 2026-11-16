@@ -1,0 +1,4 @@
+// The same microphone, fed from this computer's default audio input (mic_live.py).
+mic: Sound.ScriptedI2sPeer @ none
+    i2s: i2s0
+    file: "mic_live.py"

@@ -1,0 +1,4 @@
+// Something to type at the firmware console: console_peer.py on the other end of UART0.
+console: UART.ScriptedUartPeer @ uart0
+    file: "console_peer.py"
+    baudRate: 115200

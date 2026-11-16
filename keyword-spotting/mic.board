@@ -1,0 +1,4 @@
+// An I2S MEMS microphone on I2S0 data-in (the example uses GPIO2). mic.py plays WAV clips.
+mic: Sound.ScriptedI2sPeer @ none
+    i2s: i2s0
+    file: "mic.py"
