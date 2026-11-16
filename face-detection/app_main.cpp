@@ -6,6 +6,9 @@
 //   chip -> "F\n"                       ask for a frame
 //   host -> W*H*3 bytes                 RGB888, row-major
 //   chip -> "B x1 y1 x2 y2 score\n" ... one line per face, then "E <ms>\n"
+// The chip asks for the next frame before it runs the detector on this one, so the next frame's
+// bytes arrive in the UART driver's buffer while it computes, as a camera driver double-buffers:
+// a frame's answer comes after the request for the frame after it.
 #include <cstdio>
 #include "driver/uart.h"
 #include "esp_heap_caps.h"
@@ -31,7 +34,8 @@ extern "C" void app_main(void)
     cfg.stop_bits = UART_STOP_BITS_1;
     cfg.flow_ctrl = UART_HW_FLOWCTRL_DISABLE;
     cfg.source_clk = UART_SCLK_DEFAULT;
-    ESP_ERROR_CHECK(uart_driver_install(CAM_UART, 16384, 0, 0, NULL, 0));
+    // A whole frame fits in the driver's buffer, so it can arrive during an inference.
+    ESP_ERROR_CHECK(uart_driver_install(CAM_UART, 65536, 0, 0, NULL, 0));
     ESP_ERROR_CHECK(uart_param_config(CAM_UART, &cfg));
     ESP_ERROR_CHECK(uart_set_pin(CAM_UART, CAM_TX, CAM_RX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
 
@@ -40,8 +44,8 @@ extern "C" void app_main(void)
     HumanFaceDetect *detect = new HumanFaceDetect();
     char line[64];
 
+    uart_write_bytes(CAM_UART, "F\n", 2);
     for (;;) {
-        uart_write_bytes(CAM_UART, "F\n", 2);
         int got = 0;
         while (got < W * H * 3) {
             int n = uart_read_bytes(CAM_UART, buf + got, W * H * 3 - got, pdMS_TO_TICKS(2000));
@@ -53,8 +57,10 @@ extern "C" void app_main(void)
         }
         if (got < W * H * 3) {
             uart_flush_input(CAM_UART);
+            uart_write_bytes(CAM_UART, "F\n", 2);
             continue;
         }
+        uart_write_bytes(CAM_UART, "F\n", 2);   // the next frame, while this one is detected
 
         int64_t t0 = esp_timer_get_time();
         auto &faces = detect->run(img);

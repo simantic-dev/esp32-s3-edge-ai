@@ -4,7 +4,7 @@ The ffplay window is split: on the left the live camera, on the right the last f
 was sent, as the chip got it (160x120, scaled up), with the boxes it answered for that frame.
 The right side lags by design: it changes only when the chip answers.
 CAM_CMD overrides the capture command (anything writing 640x480 rgb24 to stdout)."""
-import os, shlex, subprocess, threading, time
+import collections, os, shlex, subprocess, threading, time
 
 W, H, S = 640, 480, 4          # capture size; the chip gets W/S x H/S
 CMD = os.environ.get("CAM_CMD",
@@ -56,7 +56,7 @@ class Peer:
         self.ctx = ctx
         self.line = b""
         self.latest, self.n = None, 0   # newest camera frame and its number
-        self.sent = None                  # the frame the chip is working on, as it got it
+        self.sent = collections.deque()   # frames sent and not yet answered, oldest first
         self.right = bytes(W * H * 3)     # that frame with its boxes, once answered
         self.pending = []
         self.frames, self.t0 = 0, time.time()
@@ -94,14 +94,19 @@ class Peer:
         if line == ["F"]:
             while self.latest is None:
                 time.sleep(0.01)
-            self.sent = shrink(self.latest)
-            self.ctx.send(self.sent)
+            frame = shrink(self.latest)
+            self.sent.append(frame)
+            self.ctx.send(frame)
         elif line[:1] == ["B"] and len(line) == 6:
             self.pending.append(tuple(int(v) * S for v in line[1:5]))
         elif line[:1] == ["E"]:
             boxes, self.pending = self.pending, []
-            if self.sent is not None:
-                right = enlarge(self.sent)
+            # Two frames are out when an answer comes: the one answered and the next one, which
+            # the chip asked for before detecting. Older ones were dropped by a chip timeout.
+            while len(self.sent) > 2:
+                self.sent.popleft()
+            if self.sent:
+                right = enlarge(self.sent.popleft())
                 draw(right, boxes)
                 self.right = bytes(right)
             self.frames += 1
