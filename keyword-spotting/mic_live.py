@@ -15,6 +15,7 @@ class Peer:
     def __init__(self, ctx):
         self.buf = bytearray()
         self.lock = threading.Lock()
+        self.frames = self.peak = 0
         self.proc = subprocess.Popen(shlex.split(CMD), stdout=subprocess.PIPE)
         threading.Thread(target=self.pump, daemon=True).start()
 
@@ -35,4 +36,9 @@ class Peer:
         for f, s in enumerate(a):
             s = max(-32768, min(32767, int(s * GAIN)))
             out[8 * f:8 * f + 4] = ((s << 14) & 0xFFFFFFFF).to_bytes(4, "big")
+            self.peak = max(self.peak, abs(s))
+        self.frames += frames
+        if self.frames >= 16000:   # once a second of chip time: show what the chip is hearing
+            print(f"mic level |{'#' * (self.peak * 20 // 32768):<20}|", file=sys.stderr, flush=True)
+            self.frames = self.peak = 0
         return bytes(out)

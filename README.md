@@ -72,9 +72,32 @@ This one has not been run on a board. The detections are the simulator's.
 
 ### `./demo live`
 
-Needs `ffmpeg`, and a microphone (a Mac mini has none built in). Wait for
-`Audio Recording started`, then speak.
+Needs `ffmpeg` (`brew install ffmpeg`) and any microphone your computer can see: built-in,
+headset, webcam. `./demo live` records one second first and tells you if it hears nothing, so
+you find out about a missing microphone or a blocked permission before the chip boots. Then wait
+for `Audio Recording started` and speak.
 
+```mermaid
+flowchart LR
+  subgraph host["Your computer"]
+    mic(["Microphone"]) --> ff["ffmpeg<br/>16 kHz mono"] --> py["mic_live.py<br/>plays the I2S microphone"]
+    term(["Terminal"])
+  end
+  subgraph chip["sim: simulated ESP32-S3"]
+    i2s["I2S0 receiver<br/>BCLK GPIO41, WS GPIO42, DIN GPIO2"] --> fw["micro_speech firmware<br/>TFLite Micro + esp-nn"] --> uart["UART0"]
+  end
+  py -- "32-bit sample frames" --> i2s
+  uart -- "Detected yes" --> term
+```
+
+`./demo speech` is the same picture with `mic.py` reading WAV files in place of the microphone
+and ffmpeg. The firmware is identical and cannot tell which one it is talking to.
+
+A `mic level` bar prints once a second with the loudest sample the chip received. It should
+jump past the middle when you speak.
+
+- Wrong microphone? `./demo mics` lists them, `MIC=1 ./demo live` picks one.
+- Bar barely moves? `MIC_GAIN=4 ./demo live`.
 ```mermaid
 flowchart LR
   ff["ffmpeg (MIC_CMD) on this computer's mic<br/>16 kHz mono s16le"]
@@ -88,12 +111,10 @@ flowchart LR
 - The model knows two words, "yes" and "no".
 - The stock example classifies back-to-back one-second windows, so a word that straddles two
   windows can be missed. Say it again.
-- Too quiet? `MIC_GAIN=4 ./demo live`. Another input, or Linux?
-  `MIC_CMD="ffmpeg -loglevel error -f pulse -i default -ar 16000 -ac 1 -f s16le -" ./demo live`
-  (any command that writes 16 kHz mono s16le to stdout).
 
-`./demo live 300` runs for five minutes instead of one. Only the default macOS capture command
-has been tried.
+`./demo live 300` runs for five minutes instead of one. `MIC_CMD` replaces the capture command
+entirely (anything that writes 16 kHz mono s16le to stdout). Linux uses PulseAudio (`sudo apt install ffmpeg pulseaudio-utils`); WSL2 gets the Windows
+microphone through WSLg. Neither has been tried.
 
 ## How it is wired
 

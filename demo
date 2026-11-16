@@ -1,5 +1,5 @@
 #!/bin/sh
-# Edge AI on a simulated ESP32-S3. Usage: ./demo person | speech | live [seconds]
+# Edge AI on a simulated ESP32-S3. Usage: ./demo person | speech | live [seconds] | mics
 # Uses `sim` from PATH; SIM=/path/to/sim overrides.
 set -eu
 SIM="${SIM:-sim}"
@@ -8,6 +8,10 @@ command -v "$SIM" >/dev/null || { echo "sim not found. Install it: curl -fsSL ht
 case "$("$SIM" --version 2>/dev/null)" in
   "sim 0.10.0"*|"sim 0.9."*|"sim 0.8."*) echo "note: these demos need sim 0.10.1 or newer; found $("$SIM" --version)" >&2 ;;
 esac
+
+need_ffmpeg() {
+  command -v ffmpeg >/dev/null || { echo "The live demo records with ffmpeg. Install it: brew install ffmpeg (macOS) or sudo apt install ffmpeg (Linux)" >&2; exit 1; }
+}
 
 run() {  # run <dir> <mcu> <board> <seconds> <lines to show> [extra sim flags]
   dir=$1 mcu=$2 board=$3 secs=$4 show=$5; shift 5
@@ -19,7 +23,25 @@ run() {  # run <dir> <mcu> <board> <seconds> <lines to show> [extra sim flags]
 case "${1:-}" in
   person) run person-detection ESP32-S3FN8 console.board 2.7 'detect_image|Total time|person score|Elapsed' ;;
   speech) run keyword-spotting ESP32-S3-WROOM-1-N16R8 mic.board 4 'Recording started|Detected  |Elapsed' ;;
-  live)   echo "Say yes or no. Ctrl-C to stop." >&2
-          run keyword-spotting ESP32-S3-WROOM-1-N16R8 live.board "${2:-60}" 'Recording started|Detected  ' --real-time ;;
-  *) echo "usage: ./demo person | speech | live [seconds]" >&2; exit 2 ;;
+  mics)   need_ffmpeg
+          if [ "$(uname)" = Darwin ]; then
+            ffmpeg -hide_banner -f avfoundation -list_devices true -i "" 2>&1 | sed -n '/audio devices/,$p' | grep '\] \[' || echo "no microphones found" >&2
+          else pactl list short sources; fi
+          echo "Pick one with: MIC=<number or name> ./demo live" >&2 ;;
+  live)   if [ -z "${MIC_CMD:-}" ]; then   # MIC_CMD set = you know what you are doing, no check
+            need_ffmpeg
+            if [ "$(uname)" = Darwin ]; then in="-f avfoundation -i :${MIC:-default}"; else in="-f pulse -i ${MIC:-default}"; fi
+            # One second of sound first: a missing or blocked microphone is otherwise just silence.
+            heard=$(ffmpeg -loglevel error $in -t 1 -ar 16000 -ac 1 -f s16le - 2>/dev/null | LC_ALL=C tr -d '\0' | wc -c) || heard=0
+            [ "$heard" -gt 0 ] || { echo "No sound from the microphone. Check that:
+  - one is plugged in (./demo mics lists them; MIC=<number> ./demo live picks one)
+  - on a Mac, your terminal is allowed to use it:
+    System Settings > Privacy & Security > Microphone, then restart the terminal
+  - on WSL2, WSLg is running (echo \$PULSE_SERVER prints a path) and Windows allows it:
+    Settings > Privacy & security > Microphone > Let desktop apps access your microphone" >&2; exit 1; }
+            export MIC_CMD="ffmpeg -loglevel error $in -ar 16000 -ac 1 -f s16le -"
+          fi
+          echo "Microphone works. Starting the chip; say yes or no once it prints 'Audio Recording started'. Ctrl-C to stop." >&2
+          run keyword-spotting ESP32-S3-WROOM-1-N16R8 live.board "${2:-60}" 'Recording started|Detected  |mic level' --real-time ;;
+  *) echo "usage: ./demo person | speech | live [seconds] | mics" >&2; exit 2 ;;
 esac
