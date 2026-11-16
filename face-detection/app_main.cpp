@@ -1,6 +1,8 @@
 // Replaces app_main.cpp of ESP-DL's human_face_detect example (build.sh). The detector is the
-// stock one; only the image source changes: frames arrive on UART1 instead of an embedded JPEG.
-// Protocol on UART1 (camera.py is the other end):
+// stock one; only the image source changes: frames arrive on UART0 instead of an embedded JPEG.
+// UART0 is a DevKit's COM (USB-UART) port, so the same image runs in the simulator (camera.board)
+// and on a board (./demo camera real); the log goes to the native USB port (build.sh).
+// Protocol on UART0 (camera.py is the other end):
 //   chip -> "F\n"                       ask for a frame
 //   host -> W*H*3 bytes                 RGB888, row-major
 //   chip -> "B x1 y1 x2 y2 score\n" ... one line per face, then "E <ms>\n"
@@ -11,10 +13,10 @@
 #include "esp_timer.h"
 #include "human_face_detect.hpp"
 
-#define CAM_UART UART_NUM_1
-#define CAM_BAUD 2000000   // must match baudRate in camera.board
-#define CAM_TX 17
-#define CAM_RX 18
+#define CAM_UART UART_NUM_0
+#define CAM_BAUD 2000000   // a DevKit's WCH CH343 COM chip does 2 Mbaud; must match camera.board and demo
+#define CAM_TX 43
+#define CAM_RX 44
 #define W 160              // the model resizes to its own 224x224 input on chip
 #define H 120
 

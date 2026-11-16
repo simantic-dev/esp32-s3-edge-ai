@@ -42,7 +42,7 @@ case "$name $mode" in
   "person real") real person-detection flash.bin console_peer.py 115200 6 'detect_image|Total time|person score' ;;
   "camera real") need_ffmpeg
           echo "Face the webcam. Ctrl-C to stop." >&2
-          real face-detection board.bin camera.py 921600 "${1:-60}" '^chip:' ;;
+          real face-detection flash.bin camera.py 2000000 "${1:-60}" '^chip:' ;;
   "speech real"|"live real") echo "Keyword spotting needs an I2S microphone wired to the board; it runs in sim only." >&2; exit 2 ;;
   "person sim") run person-detection ESP32-S3FN8 console.board 2.7 'detect_image|Total time|person score|Elapsed' ;;
   "speech sim") run keyword-spotting ESP32-S3-WROOM-1-N16R8 mic.board 4 'Recording started|Detected  |Elapsed' ;;
@@ -68,7 +68,7 @@ case "$name $mode" in
           run keyword-spotting ESP32-S3-WROOM-1-N16R8 live.board "${1:-60}" 'Recording started|Detected  |mic level' --real-time ;;
   "camera sim") need_ffmpeg
           echo "Face the webcam. Close the video window or Ctrl-C to stop." >&2
-          run face-detection ESP32-S3-WROOM-1-N16R8 camera.board "${1:-60}" '^chip:' --real-time ;;
+          run face-detection ESP32-S3-WROOM-1-N8R2 camera.board "${1:-60}" '^chip:' --real-time ;;
   *) echo "usage: ./demo person | speech | live [seconds] | mics | camera [seconds]
        ./demo person real | camera real [seconds]   (on a board; PORT=<its COM port>)" >&2; exit 2 ;;
 esac
