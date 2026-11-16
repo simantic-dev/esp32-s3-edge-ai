@@ -7,7 +7,10 @@
 # ./build.sh bench builds bench.bin instead: bench_main.cpp times the stock embedded photo ten times,
 # for an ESP32-S3 with 2 MB quad PSRAM (N8R2), code run from flash (CONFIG_SPIRAM_XIP_FROM_PSRAM=n:
 # the 1.6 MB app does not fit in 2 MB PSRAM beside the model).
-# Usage: source $IDF_PATH/export.sh (v5.4.4), then ./build.sh [bench]
+# ./build.sh board builds board.bin: the camera firmware for that same N8R2 board on a DevKit, frames
+# on UART0 (the board's own COM / USB-UART port) at 921600, the log moved to the native USB port.
+# board.py is its host side.
+# Usage: source $IDF_PATH/export.sh (v5.4.4), then ./build.sh [bench | board]
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [ -n "${IDF_PATH:-}" ] || { echo "error: source ESP-IDF v5.4.4 export.sh first" >&2; exit 2; }
@@ -19,11 +22,19 @@ cd "$W/esp-dl/examples/human_face_detect"
 printf 'CONFIG_FLASH_HUMAN_FACE_DETECT_MSRMNP_S8_V1=n\nCONFIG_FLASH_ESPDET_PICO_224_224_FACE=y\nCONFIG_ESPDET_PICO_224_224_FACE=y\n' > sdkconfig.espdet
 DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.esp32s3;sdkconfig.espdet"
 
+QUAD='CONFIG_SPIRAM_MODE_QUAD=y\nCONFIG_SPIRAM_MODE_OCT=n\nCONFIG_SPIRAM_XIP_FROM_PSRAM=n\n'
 if [ "${1:-}" = bench ]; then
   cp "$HERE/bench_main.cpp" main/app_main.cpp
-  printf 'CONFIG_SPIRAM_MODE_QUAD=y\nCONFIG_SPIRAM_MODE_OCT=n\nCONFIG_SPIRAM_XIP_FROM_PSRAM=n\n' > sdkconfig.quad
+  printf "$QUAD" > sdkconfig.quad
   DEFAULTS="$DEFAULTS;sdkconfig.quad"
   OUT=bench.bin
+elif [ "${1:-}" = board ]; then
+  sed -e 's/^#define CAM_UART UART_NUM_1/#define CAM_UART UART_NUM_0/' -e 's/^#define CAM_BAUD 2000000/#define CAM_BAUD 921600/' \
+      -e 's/^#define CAM_TX 17/#define CAM_TX 43/' -e 's/^#define CAM_RX 18/#define CAM_RX 44/' "$HERE/app_main.cpp" > main/app_main.cpp
+  [ "$(grep -cE '^#define (CAM_UART UART_NUM_0|CAM_BAUD 921600|CAM_TX 43|CAM_RX 44)' main/app_main.cpp)" = 4 ]
+  printf "${QUAD}CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y\n" > sdkconfig.quad
+  DEFAULTS="$DEFAULTS;sdkconfig.quad"
+  OUT=board.bin
 else
   cp "$HERE/app_main.cpp" main/app_main.cpp
   OUT=flash.bin

@@ -168,7 +168,22 @@ sim ESP32-S3-WROOM-1-N8R2 run --elf face-detection/bench.bin --ascii uart0 --onl
 
 The demo's own `flash.bin` is built for octal PSRAM (`ESP32-S3-WROOM-1-N16R8`) and takes about
 490 ms per frame in the simulator. We have not found why that is so much more than the 191 ms
-above, and have not run it on a board.
+above.
+
+#### The same demo on a board
+
+`face-detection/board.bin` is the camera firmware for that 2 MB quad-PSRAM board on a DevKit:
+frames come in on UART0, the board's own COM (USB-UART) port, at 921600 baud, and the log goes to
+the native USB port. `board.py` is `camera.py` on a serial port instead of the simulator:
+
+```sh
+esptool.py write_flash 0x0 face-detection/board.bin      # through either port
+python3 face-detection/board.py /dev/cu.usbmodemXXXX     # the COM port, not the native USB one
+```
+
+Opening the COM port resets the board, which is fine: the chip asks for a frame again after two
+seconds. On the board each inference took 275 to 276 ms, the same as the benchmark, and an answer
+came back about once a second (0.6 s of frame on the wire at 921600 baud, plus the inference).
 
 ## How it is wired
 
