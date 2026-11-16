@@ -1,0 +1,4 @@
+// This computer's webcam on UART1 (camera.py); app_main.cpp sets GPIO17/18 and 2 Mbaud.
+camera: UART.ScriptedUartPeer @ uart1
+    file: "camera.py"
+    baudRate: 2000000

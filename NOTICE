@@ -1,11 +1,16 @@
 The scripts, board files and documentation in this repository are MIT licensed (see LICENSE).
 
 The firmware images and audio clips are builds and copies of third-party work under the
-Apache License 2.0 (http://www.apache.org/licenses/LICENSE-2.0):
+Apache License 2.0 (http://www.apache.org/licenses/LICENSE-2.0), except ESP-DL, which is MIT:
 
 - person-detection/flash.bin and keyword-spotting/flash.bin are unmodified-source builds of the
   person_detection and micro_speech examples from espressif/esp-tflite-micro v1.4.3 (TensorFlow
   Lite Micro, Copyright The TensorFlow Authors; esp-nn and ESP-IDF, Copyright Espressif Systems).
   Each directory's build.sh is the exact recipe.
+- face-detection/flash.bin and face-detection/bench.bin are builds of the human_face_detect example
+  from espressif/esp-dl v3.3.14 (MIT License, Copyright Espressif Systems), with that example's
+  app_main.cpp replaced by face-detection/app_main.cpp or bench_main.cpp and the
+  ESPDET_PICO_224_224_FACE model selected; bench.bin embeds the example's human_face.jpg.
+  face-detection/build.sh is the exact recipe. They also contain ESP-IDF (Apache-2.0).
 - keyword-spotting/yes_1000ms.wav, no_1000ms.wav and silence_1000ms.wav are the test clips that
   example ships in test_data/.

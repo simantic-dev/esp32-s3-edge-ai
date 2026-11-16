@@ -1,5 +1,5 @@
 #!/bin/sh
-# Edge AI on a simulated ESP32-S3. Usage: ./demo person | speech | live [seconds] | mics
+# Edge AI on a simulated ESP32-S3. Usage: ./demo person | speech | live [seconds] | mics | camera [seconds]
 # Uses `sim` from PATH; SIM=/path/to/sim overrides.
 set -eu
 SIM="${SIM:-sim}"
@@ -43,5 +43,8 @@ case "${1:-}" in
           fi
           echo "Microphone works. Starting the chip; say yes or no once it prints 'Audio Recording started'. Ctrl-C to stop." >&2
           run keyword-spotting ESP32-S3-WROOM-1-N16R8 live.board "${2:-60}" 'Recording started|Detected  |mic level' --real-time ;;
-  *) echo "usage: ./demo person | speech | live [seconds] | mics" >&2; exit 2 ;;
+  camera) need_ffmpeg
+          echo "Face the webcam. Close the video window or Ctrl-C to stop." >&2
+          run face-detection ESP32-S3-WROOM-1-N16R8 camera.board "${2:-60}" '^chip:' --real-time ;;
+  *) echo "usage: ./demo person | speech | live [seconds] | mics | camera [seconds]" >&2; exit 2 ;;
 esac

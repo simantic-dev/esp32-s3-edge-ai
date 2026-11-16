@@ -21,6 +21,7 @@ curl -fsSL https://simantic.com/install | sh
 | `./demo person` | Person detection on ten test images. Prints each score and the inference time the firmware measured. |
 | `./demo speech` | Keyword spotting. A simulated I2S microphone plays a spoken "yes" and "no" from WAV files. |
 | `./demo live` | The same, from your computer's microphone. Say "yes" or "no". |
+| `./demo camera` | Face detection on your webcam. The simulated chip finds the faces; your computer draws the boxes. |
 
 ### `./demo person`
 
@@ -116,6 +117,59 @@ flowchart LR
 entirely (anything that writes 16 kHz mono s16le to stdout). Linux uses PulseAudio (`sudo apt install ffmpeg pulseaudio-utils`); WSL2 gets the Windows
 microphone through WSLg. Neither has been tried.
 
+### `./demo camera`
+
+Needs `ffmpeg` (with `ffplay`) and a webcam. A window opens with your camera; a green box follows
+your face, drawn from coordinates the simulated chip sends back.
+
+The firmware is Espressif's [ESP-DL](https://github.com/espressif/esp-dl) `human_face_detect`
+example (v3.3.14) with two changes: frames arrive on UART1 instead of from an embedded JPEG
+(`face-detection/app_main.cpp`), and the model is ESP-DL's one-stage `ESPDET_PICO_224_224_FACE`
+instead of the example's default two-stage MSR+MNP, which found no face in webcam frames of
+someone looking down at a laptop. The kernels are ESP-DL's int8 convolutions on the S3's vector
+instructions (`ee.vmulas` and friends; about 97,000 vector instructions in the image).
+
+`face-detection/camera.py` is the camera, a scripted peer on UART1:
+
+```
+chip -> "F\n"                       ask for a frame
+host -> 160 x 120 x 3 bytes          RGB888, the newest webcam frame, at 2 Mbaud
+chip -> "B x1 y1 x2 y2 score\n" ...  one line per face, then "E <ms>\n"
+```
+
+The video plays at camera rate; the box moves when the next answer comes back, about one every
+three seconds on an M-series Mac. Most of that is the chip: the frame takes 0.3 s on the wire
+and the inference about half a second, and the simulator runs at about half real time.
+`./demo camera 300` runs for five simulated minutes instead of one. `CAM_CMD` swaps the capture
+command (anything writing 640x480 rgb24 to stdout; the default is macOS's camera 0).
+
+#### Checked against a board
+
+The same detector, timed on a real ESP32-S3 with 2 MB of quad PSRAM and on the simulator's
+matching module. `face-detection/bench.bin` runs the example's own test photo ten times and
+prints each time (`bench_main.cpp`; `./build.sh bench` rebuilds it):
+
+| | Real chip | Simulator (`ESP32-S3-WROOM-1-N8R2`) |
+|---|---|---|
+| Score and box | 0.893, [98 57 198 194] | 0.893, [98 57 198 194] |
+| First run | 464 ms | 334 ms |
+| Runs 2 to 10 | 278 ms | 191 ms |
+
+The answers are identical. The time is not: here the simulator is about 30% fast, where the
+person detector, whose tensors sit in internal RAM, matched within a millisecond. This model's
+tensors are in PSRAM, so, as with the PSRAM person build below, trust the simulator's ranking
+more than its number. Espressif quotes 129 ms for this model with octal PSRAM and a 64 KB data
+cache, a configuration we have not run on a board.
+
+```sh
+esptool.py write_flash 0x0 face-detection/bench.bin   # then watch the console
+sim ESP32-S3-WROOM-1-N8R2 run --elf face-detection/bench.bin --ascii uart0 --only-messages --timeout 4
+```
+
+The demo's own `flash.bin` is built for octal PSRAM (`ESP32-S3-WROOM-1-N16R8`) and takes about
+490 ms per frame in the simulator. We have not found why that is so much more than the 191 ms
+above, and have not run it on a board.
+
 ## How it is wired
 
 Each demo is one `sim` command (read `demo`, it is 30 lines): a chip, a firmware image and a
@@ -132,8 +186,8 @@ recordings; `console_peer.py` is where you would type different commands.
 
 ## Rebuilding the firmware
 
-`person-detection/build.sh` and `keyword-spotting/build.sh` are the exact recipes, on ESP-IDF
-v5.4.4. Useful things to try on the person detector, all of which we checked against the board:
+`person-detection/build.sh`, `keyword-spotting/build.sh` and `face-detection/build.sh` are the
+exact recipes, on ESP-IDF v5.4.4. Useful things to try on the person detector, all of which we checked against the board:
 
 | Change in `sdkconfig` | Real chip | Simulator |
 |---|---|---|
@@ -148,6 +202,6 @@ says 57, so on PSRAM builds trust the ranking more than the number.
 
 ## Licenses
 
-Scripts and board files: MIT. Firmware images and audio clips: builds and copies of Apache-2.0
-work by Espressif and the TensorFlow authors; see `NOTICE`. The simulator itself is a commercial
+Scripts, board files and `face-detection/*.cpp`: MIT. Firmware images and audio clips: builds
+and copies of Apache-2.0 and MIT work by Espressif and the TensorFlow authors; see `NOTICE`. The simulator itself is a commercial
 product and is not part of this repository.
