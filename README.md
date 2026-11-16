@@ -56,18 +56,20 @@ This one has not been run on a board. The detections are the simulator's.
 
 ### `./demo live`
 
-Needs `ffmpeg`, and a microphone (a Mac mini has none built in). Wait for
-`Audio Recording started`, then speak.
+Needs `ffmpeg` (`brew install ffmpeg`) and any microphone your computer can see: built-in,
+headset, webcam. `./demo live` records one second first and tells you if it hears nothing, so
+you find out about a missing microphone or a blocked permission before the chip boots. Then wait
+for `Audio Recording started` and speak.
 
+- Wrong microphone? `./demo mics` lists them, `MIC=1 ./demo live` picks one.
+- Too quiet? `MIC_GAIN=4 ./demo live`.
 - The model knows two words, "yes" and "no".
 - The stock example classifies back-to-back one-second windows, so a word that straddles two
   windows can be missed. Say it again.
-- Too quiet? `MIC_GAIN=4 ./demo live`. Another input, or Linux?
-  `MIC_CMD="ffmpeg -loglevel error -f pulse -i default -ar 16000 -ac 1 -f s16le -" ./demo live`
-  (any command that writes 16 kHz mono s16le to stdout).
 
-`./demo live 300` runs for five minutes instead of one. Only the default macOS capture command
-has been tried.
+`./demo live 300` runs for five minutes instead of one. `MIC_CMD` replaces the capture command
+entirely (anything that writes 16 kHz mono s16le to stdout). Linux uses PulseAudio and has not
+been tried.
 
 ## How it is wired
 
