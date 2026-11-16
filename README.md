@@ -159,9 +159,36 @@ host -> 160 x 120 x 3 bytes          RGB888, the newest webcam frame, at 2 Mbaud
 chip -> "B x1 y1 x2 y2 score\n" ...  one line per face, then "E <ms>\n"
 ```
 
-On an M-series Mac the simulator answers about 0.8 times a second; the board 1.5 times. Per
-frame the chip spends 0.29 s receiving it at 2 Mbaud and 0.19 s (simulator) or 0.28 s (board) on
-the inference, and the simulator runs slower than real time.
+The chip asks for the next frame before it runs the detector on this one, so the next frame
+arrives while it computes. `camera.py` pairs each answer with the frame it was for.
+
+#### Optimized in the simulator, confirmed on the board
+
+The first version asked for a frame, waited for all of it, then ran the detector. The simulated
+chip's own timestamps showed where each frame's time went before anyone touched a board: 0.29 s
+receiving 57,600 bytes at 2 Mbaud, with the CPU doing nothing useful, then 0.19 s of inference.
+Waiting was 60% of every frame.
+
+So the firmware double-buffers, as a camera driver would: it asks for frame N+1, then detects
+frame N while N+1's bytes land in a 64 KB UART driver buffer. That change was written and run in
+the simulator, which predicted one answer every 290 ms instead of 480. Flashed to the board
+unchanged:
+
+| One answer every | Before | After |
+|---|---|---|
+| Simulator (chip time) | 480 ms | 290 ms |
+| Board | 570 ms (1.75 fps) | 290 ms (3.4 fps) |
+
+The board doubled its frame rate from a change made and checked without it. Read the match with
+one caveat: the two land on 290 ms for different reasons. In the simulator the transfer (290 ms)
+is now the longer of the two and sets the pace; on the board the inference (287 ms) does, because
+the simulator runs this model's inference 32% fast (the PSRAM store costs below). The prediction
+"the chip stops waiting for the wire" held; the exact millisecond is partly luck.
+
+Wall-clock speed is another matter: the simulator runs this code about 3x slower than real time on
+an M-series Mac, so the simulated demo shows about one answer a second (0.94), and the change cost
+it a little (from 1.3), since the UART interrupts that now run during inference are simulated too.
+
 `./demo camera 300` runs for five simulated minutes instead of one. `CAM_CMD` swaps the capture
 command (anything writing 640x480 rgb24 to stdout; the default is macOS's camera 0).
 
@@ -195,9 +222,19 @@ port (`real.py` carries any demo's peer to a serial port). On the board each inf
 to 276 ms, the same as the benchmark; in the simulator the same file takes 187 ms, the same 32%
 as the benchmark, so on quad PSRAM the simulator is consistently fast on this model.
 
-The simulator's source says why: it has no data cache model, so a PSRAM line miss costs nothing
-(it records about 274 cycles a line on an N8R2 board). The person detector, all in internal RAM,
-never misses. The two simulated PSRAM types also disagree with each other in opposite
+The cause is stores. The simulator's data cache charges a PSRAM line fill on a load miss, close to
+silicon, but its stores are free and allocate nothing. Measured on this board with interrupts off,
+in cycles per line above an all-hits sweep:
+
+| | Board, 32 / 64-byte lines | Simulator |
+|---|---|---|
+| Load miss, clean line evicted | 265 / 457 | 252 / 444 |
+| Store miss, clean line evicted | 261 / 453 | 0 |
+| Load or store miss, dirty line evicted | 517 / 901 | 0 |
+
+A store miss fills the line as a load does (write-allocate), and evicting a dirty line costs
+about one more fill (the write-back). The detector writes every layer's output to PSRAM, so it
+pays both all the time; the person detector, all in internal RAM, never misses. The two simulated PSRAM types also disagree with each other in opposite
 directions; this build for octal PSRAM, an earlier version of the demo, took about 490 ms:
 
 | Module | Simulator | Reference |
