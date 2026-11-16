@@ -167,8 +167,8 @@ sim ESP32-S3-WROOM-1-N8R2 run --elf face-detection/bench.bin --ascii uart0 --onl
 ```
 
 The demo's own `flash.bin` is built for octal PSRAM (`ESP32-S3-WROOM-1-N16R8`) and takes about
-490 ms per frame in the simulator. We have not found why that is so much more than the 191 ms
-above.
+490 ms per frame in the simulator, more than twice the 191 ms above; see the table at the end of
+the next section.
 
 #### The same demo on a board
 
@@ -184,6 +184,21 @@ python3 face-detection/board.py /dev/cu.usbmodemXXXX     # the COM port, not the
 Opening the COM port resets the board, which is fine: the chip asks for a frame again after two
 seconds. On the board each inference took 275 to 276 ms, the same as the benchmark, and an answer
 came back about once a second (0.6 s of frame on the wire at 921600 baud, plus the inference).
+
+`board.bin` in the simulator, on the matching module with the camera peer on UART0
+(`camera: UART.ScriptedUartPeer @ uart0`, `baudRate: 921600`, `sim ESP32-S3-WROOM-1-N8R2 run
+--elf board.bin --real-time`), takes 187 ms per inference against the board's 275 ms: the same
+32% as the benchmark, so on quad PSRAM the simulator is consistently fast on this model.
+
+The two simulated PSRAM types disagree with each other in opposite directions:
+
+| Module | Simulator | Reference |
+|---|---|---|
+| quad, `N8R2` | 187 ms | 275 ms on our board |
+| octal, `N16R8` | about 490 ms | 129 ms + 7 ms preprocessing, Espressif's figure; not run by us |
+
+We have no octal-PSRAM board, so the second row compares the simulator with a published number,
+not with a measurement of ours.
 
 ## How it is wired
 
