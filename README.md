@@ -23,6 +23,20 @@ curl -fsSL https://simantic.com/install | sh
 | `./demo live` | The same, from your computer's microphone. Say "yes" or "no". |
 | `./demo camera` | Face detection on your webcam. The simulated chip finds the faces; your computer draws the boxes. |
 
+Add `real` after the name to run the same demo on an ESP32-S3 DevKit instead of the simulator:
+`./demo person real`, `./demo camera real [seconds]`. It flashes the demo's image and runs the
+same Python peer on the board's COM (USB-UART) port, which is wired to UART0:
+
+```sh
+PORT=/dev/cu.usbmodemXXXX FLASH_PORT=/dev/cu.usbmodemYYYY ./demo camera real
+```
+
+`PORT` is the COM port. `FLASH_PORT`, the board's native USB port, is optional: without it the
+image goes through `PORT`, but on our board the COM port's WCH chip failed every flash with a
+checksum error and the native port never did. Needs `pip install pyserial esptool`; `PYTHON`
+picks the interpreter. The keyword spotters need an I2S microphone on the board and stay
+simulator-only.
+
 ### `./demo person`
 
 ![person detection](media/person-detection.gif)
@@ -174,15 +188,8 @@ the next section.
 
 `face-detection/board.bin` is the camera firmware for that 2 MB quad-PSRAM board on a DevKit:
 frames come in on UART0, the board's own COM (USB-UART) port, at 921600 baud, and the log goes to
-the native USB port. `board.py` is `camera.py` on a serial port instead of the simulator:
-
-```sh
-esptool.py write_flash 0x0 face-detection/board.bin      # through either port
-python3 face-detection/board.py /dev/cu.usbmodemXXXX     # the COM port, not the native USB one
-```
-
-Opening the COM port resets the board, which is fine: the chip asks for a frame again after two
-seconds. On the board each inference took 275 to 276 ms, the same as the benchmark, and an answer
+the native USB port. `./demo camera real` flashes it and runs `camera.py` on the COM port
+(`real.py` carries any demo's peer to a serial port). On the board each inference took 275 to 276 ms, the same as the benchmark, and an answer
 came back about once a second (0.6 s of frame on the wire at 921600 baud, plus the inference).
 
 `board.bin` in the simulator, on the matching module with the camera peer on UART0

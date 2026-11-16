@@ -9,7 +9,7 @@
 # the 1.6 MB app does not fit in 2 MB PSRAM beside the model).
 # ./build.sh board builds board.bin: the camera firmware for that same N8R2 board on a DevKit, frames
 # on UART0 (the board's own COM / USB-UART port) at 921600, the log moved to the native USB port.
-# board.py is its host side.
+# ./demo camera real flashes and runs it.
 # Usage: source $IDF_PATH/export.sh (v5.4.4), then ./build.sh [bench | board]
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
