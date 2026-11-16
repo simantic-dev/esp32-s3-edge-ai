@@ -1,31 +1,30 @@
 #!/usr/bin/env python3
-"""Renders media/emulator-explainer.mp4: 15 s, 1920x1080, 30 fps.
+"""Renders media/emulator-explainer.mp4: 15 s, 1920x1080, 30 fps, in the style of Simantic's
+explainer videos (light dot-grid page, outlined cards, caption block, step tracker).
 
     python3 media/emulator-explainer.py            # render the video
     python3 media/emulator-explainer.py 1 4 7      # write still-<t>.png beside the video instead
 
-Needs Pillow and ffmpeg. Fonts are the site's (IBM Plex Sans, JetBrains Mono), read from TeX Live;
-set FONT_DIR to a folder holding the same .otf files if TeX Live is elsewhere.
-Drawn at 2x and scaled down by ffmpeg for antialiasing.
+Needs Pillow and ffmpeg. Fonts: Source Sans 3 and IBM Plex Mono, read from TeX Live (set FONT_DIR
+to a folder holding the same .otf files otherwise). The wordmark is the site's
+public/simantic_logo_4_full_transparent.png (LOGO overrides the path). Drawn at 2x, scaled down.
 """
 import os, random, subprocess, sys
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageFont
 
 W, H, FPS, SECONDS, S = 1920, 1080, 30, 15, 2
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "emulator-explainer.mp4")
+HERE = os.path.dirname(os.path.abspath(__file__))
+OUT = os.path.join(HERE, "emulator-explainer.mp4")
+LOGO = os.environ.get("LOGO", os.path.expanduser("~/dev/simantic/simantic/public/simantic_logo_4_full_transparent.png"))
 BAUD = "2,000,000"
 
-# simantic.com palette (src/index.css, src/pages/LandingPage.css)
-BG, TEXT, TEXT_H, BORDER, CODE_BG = "#ffffff", "#6b6375", "#08060d", "#e5e4e7", "#f4f3ec"
-ACCENT, ACCENT_DARK = "#aa3bff", "#c084fc"
-TERM, TERM_FG, TERM_DIM, CHIP_BG = "#1e1e2a", "#e6e6ea", "#8b949e", "#16171d"
-BLUE, TEAL, AMBER, GREEN = "#6ec1ff", "#4ec9b0", "#f0b95d", "#28c840"
+BG, GRID, CARD, INK, MUTED, FAINT, RULE = "#f9faf5", "#e4e5e0", "#ffffff", "#111111", "#4a6275", "#aab7ba", "#d6d9d2"
+TEAL, AMBER, CODE = "#337c78", "#a47632", "#f3f4ef"
 
 TEXLIVE = "/usr/local/texlive/2026/texmf-dist/fonts/opentype"
 FONT_FILES = {
-    "light": "ibm/plex/IBMPlexSans-Light.otf", "sans": "ibm/plex/IBMPlexSans-Regular.otf",
-    "medium": "ibm/plex/IBMPlexSans-Medium.otf", "mono": "SIL/jetbrainsmono-otf/JetBrainsMono-Regular.otf",
-    "monob": "SIL/jetbrainsmono-otf/JetBrainsMono-SemiBold.otf",
+    "sans": "adobe/sourcesans/SourceSans3-Regular.otf", "semi": "adobe/sourcesans/SourceSans3-Semibold.otf",
+    "mono": "ibm/plex/IBMPlexMono-Regular.otf", "monom": "ibm/plex/IBMPlexMono-Medium.otf",
 }
 _fonts = {}
 
@@ -46,7 +45,7 @@ def sc(*v):
     return [x * S for x in v]
 
 
-def text(d, x, y, s, f="sans", size=24, fill=TEXT, a=1.0, anchor="la"):
+def text(d, x, y, s, f="sans", size=24, fill=INK, a=1.0, anchor="la"):
     if a > 0.01:
         d.text((x * S, y * S), s, font=font(f, size), fill=rgba(fill, a), anchor=anchor)
 
@@ -58,12 +57,12 @@ def width(s, f, size):
 def box(d, x0, y0, x1, y1, r=0, fill=None, outline=None, w=1, a=1.0):
     if a > 0.01:
         d.rounded_rectangle(sc(x0, y0, x1, y1), r * S, fill=fill and rgba(fill, a),
-                            outline=outline and rgba(outline, a), width=int(w * S))
+                            outline=outline and rgba(outline, a), width=max(1, int(w * S)))
 
 
-def line(d, pts, fill, w=2, a=1.0):
+def line(d, pts, fill, w=1, a=1.0):
     if a > 0.01:
-        d.line(sc(*pts), fill=rgba(fill, a), width=int(w * S))
+        d.line(sc(*pts), fill=rgba(fill, a), width=max(1, int(w * S)))
 
 
 def ease(x):
@@ -153,247 +152,307 @@ DISASM = [l.split(" ", 3) for l in """\
 120c24: 0413dc ee.src.q q0, q1, q2
 120c27: 0cf7 movi.n a7, 15""".splitlines()]
 
-HEADLINES = [
-    (0.0, 2.2, "It looks like the laptop is running the AI."),
-    (2.2, 5.4, "It isn't. The laptop only sends camera frames."),
-    (5.4, 10.0, "The detector runs inside an emulated ESP32-S3."),
-    (10.0, 12.4, "The chip answers in text. The laptop only draws the box."),
+# (start, end, step label, headline, detail): the caption block, one per beat.
+BEATS = [
+    (0.0, 2.2, "WEBCAM", "It looks like the laptop is running the AI.", ""),
+    (2.2, 5.4, "FRAMES IN", "It isn't. The laptop only sends camera frames.",
+     f"160×120 RGB into the chip's UART0 at {BAUD} baud, as a real board's USB-serial port gets it."),
+    (5.4, 10.0, "EXECUTE", "The detector runs inside an emulated ESP32-S3.",
+     "Real compiled firmware: about 97,000 Xtensa vector (PIE) instructions, each charged its cycles."),
+    (10.0, 12.4, "ANSWER", "The chip answers in text. The laptop only draws the box.",
+     "One line per face, B x1 y1 x2 y2 score, then E <ms>, back over the same UART."),
+    (12.4, 14.2, "COMPARE", "The same file on a real ESP32-S3 gives the same answer.",
+     "Inference runs on an emulated ESP32-S3. Not the laptop."),
 ]
-FACTS = [
-    (2.6, 5.4, f"160×120 RGB into the chip's UART0 at {BAUD} baud, exactly as a real board's USB-serial port would get it."),
-    (5.4, 7.7, "Real compiled firmware: about 97,000 Xtensa vector (PIE/SIMD) instructions in the image."),
-    (7.7, 10.0, "Each instruction is interpreted / JIT-compiled with cycle timing. Kernels like dl_tie728_s8_unaligned_conv2d_33cn."),
-    (10.0, 12.4, "One line per face: B x1 y1 x2 y2 score, then E <ms>, back over the same UART."),
-]
-END = [
-    ("light", 72, TEXT_H, 330, "Inference runs on an emulated ESP32-S3."),
-    ("medium", 72, ACCENT, 426, "Not the laptop."),
-    ("sans", 28, TEXT, 570, "The same firmware file on a real ESP32-S3 board gives the identical result:"),
-    ("mono", 26, TEXT_H, 616, "score 0.893, box [98 57 198 194]"),
-]
-FACT_SIZE, FACT_MAX_W = 28, 1640
+STEPS = ["Webcam", "Frames in", "Execute", "Answer", "Compare with the chip"]
+SUBJECT = "Face detection on a simulated ESP32-S3"
+CONTENT_X0, CONTENT_X1 = 80, 1840
 
 
 def background():
-    """White page, the site's 90%-wide column borders, a faint accent aurora behind the header."""
-    small = Image.new("RGB", (W // 8, H // 8), BG)
-    d = ImageDraw.Draw(small, "RGBA")
-    d.ellipse([40, -44, 150, 14], fill=rgba(ACCENT, 0.16))
-    d.ellipse([120, -48, 215, 10], fill=rgba(BLUE, 0.14))
-    img = small.filter(ImageFilter.GaussianBlur(9)).resize((W * S, H * S), Image.BICUBIC)
-    borders(ImageDraw.Draw(img, "RGBA"))
+    img = Image.new("RGB", (W * S, H * S), BG)
+    d = ImageDraw.Draw(img)
+    for y in range(7, H, 14):                                                     # the dot grid
+        for x in range(7, W, 14):
+            d.rectangle(sc(x, y, x + 1, y + 1), fill=GRID)
     return img
 
 
-def borders(d):
-    for x in (96, 1824):
-        line(d, (x, 0, x, H), BORDER, 1)
+def wordmark(h, color=INK):
+    """The site's wordmark, recoloured for a light page: mark and letters in `color`, its dot white."""
+    src = Image.open(LOGO).convert("RGBA")
+    src = src.resize((round(src.width * h * S / src.height), h * S), Image.LANCZOS)
+    out = Image.new("RGBA", src.size)
+    ink = rgba(color)[:3]
+    px, po = src.load(), out.load()
+    for y in range(src.height):
+        for x in range(src.width):
+            r, g, b, a = px[x, y]
+            po[x, y] = (255, 255, 255, a) if r + g + b < 384 else ink + (a,)   # dark dot -> white, white -> ink
+    return out
 
 
-def laptop(d, ox, t):
-    box(d, ox + 142, 306, ox + 562, 646, 16, fill="#000000", a=0.05)             # shadow
-    box(d, ox + 136, 300, ox + 556, 640, 14, fill=BG, outline=BORDER, w=2)       # screen
-    box(d, ox + 100, 640, ox + 592, 658, 8, fill="#f6f8fa", outline=BORDER, w=2)  # base
-    text(d, ox + 346, 268, "LAPTOP", "medium", 18, TEXT, anchor="ma")
-    x0, y0, x1, y1 = ox + 156, 320, ox + 536, 620                                # webcam view
-    box(d, x0, y0, x1, y1, 6, fill=CODE_BG)
-    cx, cy = ox + 346, 452
-    d.chord(sc(cx - 130, cy + 96, cx + 130, cy + 330), 202.6, 337.4, fill=rgba("#d0d7de"))  # shoulders, cut at y1
-    d.ellipse(sc(cx - 72, cy - 84, cx + 72, cy + 84), fill=rgba("#ebe9e3"), outline=rgba(TEXT_H), width=3 * S)
+def card(d, x0, y0, x1, y1, title=None, dot=None, label=None, a=1.0):
+    """White card, 1px ink border, with the second outline offset behind it; optional header row."""
+    box(d, x0 + 5, y0 + 5, x1 + 5, y1 + 5, 4, fill=CARD, outline=INK, a=a)
+    box(d, x0, y0, x1, y1, 4, fill=CARD, outline=INK, a=a)
+    if title:
+        d.ellipse(sc(x0 + 22, y0 + 26, x0 + 32, y0 + 36), fill=rgba(dot or INK, a))
+        text(d, x0 + 44, y0 + 31, title, "semi", 22, INK, a, "lm")
+    if label:
+        text(d, x1 - 22, y0 + 31, label, "mono", 17, MUTED, a, "rm")
+
+
+def chrome(img, d, t, logo):
+    img.alpha_composite(logo, (80 * S, 42 * S)) if img.mode == "RGBA" else img.paste(logo, (80 * S, 42 * S), logo)
+    text(d, CONTENT_X1, 64, SUBJECT, "sans", 21, MUTED, anchor="rm")
+    line(d, (CONTENT_X0, 112, CONTENT_X1, 112), INK, 1)
+    cur = max(i for i, b in enumerate(BEATS) if t >= b[0] or i == 0)
+    n = len(STEPS)
+    xs = [CONTENT_X0 + (CONTENT_X1 - CONTENT_X0) * i / (n - 1) for i in range(n)]
+    for i, (x, s) in enumerate(zip(xs, STEPS)):
+        c = INK if i <= cur else FAINT
+        anchor = "rm" if i == n - 1 else "lm"
+        tx = x if i < n - 1 else CONTENT_X1
+        lw = width(s, "semi" if i == cur else "sans", 21)
+        dx = tx - lw - 16 if i == n - 1 else tx
+        d.ellipse(sc(dx - 1, 1015, dx + 9, 1025), fill=rgba(c))
+        text(d, dx + 18, 1020, s, "semi" if i == cur else "sans", 21, c, anchor="lm")
+        if i < n - 1:                                                              # the track to the next step
+            nx = xs[i + 1] - (width(STEPS[i + 1], "sans", 21) + 16 if i + 1 == n - 1 else 0)
+            line(d, (dx + 30 + lw, 1020, nx - 14, 1020), RULE if i >= cur else "#9aa4a8", 1)
+    for t0, t1, label, head, sub in BEATS:
+        a = span(t, t0, t1, 0.25) if t0 else 1 - ramp(t, t1 - 0.25, t1)
+        text(d, CONTENT_X0, 870, label, "monom", 19, "#555b5e", a, "lm")
+        text(d, 258, 868, head, "semi", 46, INK, a, "lm")
+        text(d, 258, 922, sub, "sans", 28, MUTED, a, "lm")
+
+
+def face(d, cx, cy, s, a=1.0):
+    """A plain drawn face: no real person's likeness."""
+    d.ellipse(sc(cx - 72 * s, cy - 84 * s, cx + 72 * s, cy + 84 * s), fill=rgba("#eceee8", a), outline=rgba(INK, a), width=max(1, int(2 * S)))
     for ex in (-28, 28):
-        d.ellipse(sc(cx + ex - 7, cy - 22, cx + ex + 7, cy - 8), fill=rgba(TEXT_H))
-    d.arc(sc(cx - 34, cy - 4, cx + 34, cy + 46), 25, 155, fill=rgba(TEXT_H), width=3 * S)
-    box(d, x0 + 10, y0 + 10, x0 + 92, y0 + 36, 5, fill=TERM, a=0.8)
-    text(d, x0 + 51, y0 + 23, "webcam", "mono", 14, TERM_FG, anchor="mm")
-    a = max(1 - ramp(t, 2.0, 2.4), ramp(t, 11.2, 11.4))                           # the green box
+        d.ellipse(sc(cx + (ex - 7) * s, cy - 22 * s, cx + (ex + 7) * s, cy - 8 * s), fill=rgba(INK, a))
+    d.arc(sc(cx - 34 * s, cy - 4 * s, cx + 34 * s, cy + 46 * s), 25, 155, fill=rgba(INK, a), width=max(1, int(2 * S)))
+
+
+def laptop(d, x0, t, dim):
+    """The laptop card: webcam view with the box the laptop draws."""
+    x1, y0, y1 = x0 + 470, 150, 790
+    card(d, x0, y0, x1, y1, "Laptop", INK, "webcam · ffplay")
+    vx0, vy0, vx1, vy1 = x0 + 30, y0 + 70, x1 - 30, y0 + 410
+    box(d, vx0, vy0, vx1, vy1, 3, fill=CODE, outline=RULE)
+    cx, cy = (vx0 + vx1) / 2, vy0 + 160
+    d.chord(sc(cx - 130, cy + 96, cx + 130, cy + 330), 202.6, 337.4, fill=rgba("#d9ddd5"))
+    face(d, cx, cy, 1)
+    a = max(1 - ramp(t, 2.0, 2.4), ramp(t, 11.2, 11.4))                           # the box the laptop draws
     grow = 10 * (1 - ramp(t, 11.2, 11.6)) if t > 5 else 0
-    box(d, cx - 88 - grow, cy - 100 - grow, cx + 88 + grow, cy + 100 + grow, 4, outline=GREEN, w=5, a=a)
-    for i, (s, c) in enumerate((("sends camera frames", TEXT), ("draws the box", TEXT), ("runs no model", TEXT_H))):
-        y = 708 + i * 42
-        ra = ramp(t, 2.3 + i * 0.15, 2.7 + i * 0.15)                                # roles appear after the reveal
-        d.ellipse(sc(ox + 196, y - 5, ox + 206, y + 5), fill=rgba(ACCENT if i == 2 else BORDER, ra))
-        text(d, ox + 222, y, s, "medium" if i == 2 else "sans", 26, c, ra, "lm")
+    box(d, cx - 88 - grow, cy - 100 - grow, cx + 88 + grow, cy + 100 + grow, 2, outline=TEAL, w=4, a=a)
+    rows = (("sends camera frames", False), ("draws the box", False), ("runs no model", True))
+    for i, (s, key) in enumerate(rows):
+        y = vy1 + 50 + i * 44
+        ra = ramp(t, 2.3 + i * 0.15, 2.7 + i * 0.15)
+        d.ellipse(sc(x0 + 34, y - 5, x0 + 44, y + 5), fill=rgba(TEAL if key else RULE, ra))
+        text(d, x0 + 58, y, s, "semi" if key else "sans", 24, INK if key else MUTED, ra, "lm")
+    box(d, x0 - 2, y0 - 2, x1 + 8, y1 + 8, 0, fill=BG, a=0.55 * dim)               # steps back while the chip works
 
 
-def pill(d, x, y, s, lo, hi, fill=TERM, fg=TERM_FG):
-    """A token travelling along a lane, centred on x, fading out near the lane ends."""
-    w = width(s, "mono", 17) + 22
+def token(d, x, y, s, lo, hi, kind="byte"):
+    """A token on the wire, centred on x, fading near the lane ends."""
+    w = width(s, "mono", 17) + 24
     a = min(ramp(x - w / 2, lo - 30, lo + 10), 1 - ramp(x + w / 2, hi - 10, hi + 30))
-    box(d, x - w / 2, y - 16, x + w / 2, y + 16, 7, fill=fill, a=a)
-    text(d, x, y, s, "mono", 17, fg, a, "mm")
+    if kind == "ask":
+        box(d, x - w / 2, y - 16, x + w / 2, y + 16, 3, fill=TEAL, a=a)
+        text(d, x, y, s, "monom", 17, CARD, a, "mm")
+    else:
+        box(d, x - w / 2, y - 16, x + w / 2, y + 16, 3, fill=CARD, outline=TEAL if kind == "reply" else INK, a=a)
+        text(d, x, y, s, "mono", 17, TEAL if kind == "reply" else INK, a, "mm")
 
 
-def channel(d, t):
-    L, R, TOP, BOT = 600, 894, 500, 650
-    text(d, 747, 372, "UART0", "medium", 30, TEXT_H, anchor="ma")
-    text(d, 747, 414, f"{BAUD} baud", "mono", 18, TEXT, anchor="ma")
-    line(d, (L + 76, TOP, R, TOP), BORDER, 3)
-    d.polygon(sc(R + 4, TOP, R - 12, TOP - 9, R - 12, TOP + 9), fill=rgba(TEXT))
-    line(d, (L, BOT, R, BOT), BORDER, 3)
-    d.polygon(sc(L - 4, BOT, L + 12, BOT - 9, L + 12, BOT + 9), fill=rgba(TEXT))
-    text(d, (L + 76 + R) / 2, 462, "57,600 bytes", "mono", 16, TEXT, anchor="mm")
-    text(d, 747, 686, 'chip asks for a frame: "F"', "mono", 16, TEXT, span(t, 2.4, 9.9), "mm")
-    text(d, 747, 686, "chip replies in text", "mono", 16, TEXT, ramp(t, 10.0, 10.3), "mm")
-    # the frame shrinks from the webcam view to a 160x120 thumbnail at the head of the lane
-    k = ramp(t, 3.0, 3.5)
+def wire(d, t):
+    L, R, TOP, BOT = 590, 888, 430, 600
+    text(d, (L + R) / 2, 312, "UART0", "semi", 30, INK, anchor="ma")
+    text(d, (L + R) / 2, 352, f"{BAUD} baud", "mono", 18, MUTED, anchor="ma")
+    line(d, (L + 76, TOP, R, TOP), INK, 1)
+    d.polygon(sc(R + 2, TOP, R - 10, TOP - 6, R - 10, TOP + 6), fill=rgba(INK))
+    line(d, (L, BOT, R, BOT), INK, 1)
+    d.polygon(sc(L - 2, BOT, L + 10, BOT - 6, L + 10, BOT + 6), fill=rgba(INK))
+    text(d, (L + 76 + R) / 2, 396, "57,600 bytes a frame", "mono", 16, MUTED, anchor="mm")
+    text(d, (L + R) / 2, 640, 'the chip asks: "F"', "mono", 16, MUTED, span(t, 2.4, 9.9), "mm")
+    text(d, (L + R) / 2, 640, "the chip replies in text", "mono", 16, MUTED, ramp(t, 10.0, 10.3), "mm")
+    k = ramp(t, 3.0, 3.5)                                                          # webcam view -> 160x120 frame
     if t >= 3.0:
-        src, dst = (156, 320, 536, 620), (L, TOP - 24, L + 64, TOP + 24)
+        src, dst = (110, 220, 520, 560), (L, TOP - 24, L + 64, TOP + 24)
         r = [s + (e - s) * k for s, e in zip(src, dst)]
-        box(d, *r, 4, fill=CODE_BG if k == 1 else None, outline=ACCENT, w=3)
+        box(d, *r, 2, fill=CODE if k == 1 else None, outline=TEAL, w=2)
         if k == 1:
             for gx in range(1, 4):
-                line(d, (L + gx * 16, TOP - 22, L + gx * 16, TOP + 22), BORDER, 1)
+                line(d, (L + gx * 16, TOP - 22, L + gx * 16, TOP + 22), RULE, 1)
             for gy in range(1, 3):
-                line(d, (L + 2, TOP - 24 + gy * 16, L + 62, TOP - 24 + gy * 16), BORDER, 1)
-            text(d, L, TOP + 40, "160×120 RGB", "mono", 15, TEXT_H, anchor="lm")
-    if 2.5 <= t < 3.2:                                                            # "F": chip -> laptop
-        pill(d, R - (R - L) * (t - 2.5) / 0.7, BOT, "F", L, R, ACCENT, "#ffffff")
+                line(d, (L + 2, TOP - 24 + gy * 16, L + 62, TOP - 24 + gy * 16), RULE, 1)
+            text(d, L, TOP + 42, "160×120 RGB", "mono", 15, INK, anchor="lm")
+    if 2.5 <= t < 3.2:
+        token(d, R - (R - L) * (t - 2.5) / 0.7, BOT, "F", L, R, "ask")
     for i in range(14):                                                           # frame bytes: laptop -> chip
         x = L + 76 + (t - 3.5 - i * 0.15) * 330
         if 3.5 + i * 0.15 <= t and x < R + 40:
-            pill(d, x, TOP, f"{random.Random(i).randrange(256):02x}", L + 76, R)
-    for s, t0 in (("B x1 y1 x2 y2 score", 10.1), ("E <ms>", 10.75)):              # result: chip -> laptop
+            token(d, x, TOP, f"{random.Random(i).randrange(256):02x}", L + 76, R)
+    for s, t0 in (("B x1 y1 x2 y2 score", 10.1), ("E <ms>", 10.75)):              # the answer: chip -> laptop
         x = R + 110 - (t - t0) * 520
         if t >= t0 and x > L - 120:
-            pill(d, x, BOT, s, L, R)
+            token(d, x, BOT, s, L, R, "reply")
 
 
-def sim_window(img, d, t):
-    X0, Y0, X1, Y1 = 900, 250, 1784, 850
-    box(d, X0 + 4, Y0 + 14, X1 + 4, Y1 + 14, 14, fill="#0f0c1e", a=0.12)
-    box(d, X0, Y0, X1, Y1, 12, fill=TERM)
-    box(d, X0, Y0, X1, Y0 + 38, 12, fill="#33333c")
-    box(d, X0, Y0 + 20, X1, Y0 + 38, 0, fill="#2a2a32")
-    for i, c in enumerate(("#ff5f57", "#febc2e", "#28c840")):
-        d.ellipse(sc(X0 + 16 + i * 22, Y0 + 12, X0 + 30 + i * 22, Y0 + 26), fill=rgba(c))
-    text(d, (X0 + X1) / 2, Y0 + 19, "sim — Simantic simulator", "sans", 16, "#ffffff", 0.6, "mm")
-    cx0, cy0, cx1, cy1 = 950, 310, 1734, 826                                      # the chip
-    for y in range(cy0 + 30, cy1 - 10, 40):
-        for x in (cx0 - 14, cx1):
-            box(d, x, y, x + 14, y + 14, 2, fill="#3c3c46")
-    for y in (500, 650):                                                          # UART pins
-        box(d, cx0 - 50, y - 2, cx0, y + 2, 0, fill=ACCENT_DARK, a=0.6)
-    box(d, cx0, cy0, cx1, cy1, 10, fill=CHIP_BG, outline=ACCENT_DARK, w=2)
-    text(d, cx0 + 24, cy0 + 16, "ESP32-S3 (emulated)", "medium", 30, "#f3f4f6")
-    text(d, cx1 - 24, cy0 + 26, "ESP32-S3-WROOM-1-N8R2", "mono", 16, TERM_DIM, anchor="ra")
-    text(d, cx0 + 24, cy0 + 62, "dual-core Xtensa LX7 · 240 MHz · 2 MB PSRAM", "mono", 17, TERM_DIM)
-    text(d, cx0 + 24, cy0 + 90, "firmware: ESP-DL face detector · ESPDet-Pico · 224×224 · int8", "mono", 17, TEAL)
-    text(d, cx1 - 24, cy0 + 90, "flash.bin", "mono", 17, TERM_DIM, anchor="ra")
-    line(d, (cx0 + 24, cy0 + 124, cx1 - 24, cy0 + 124), "#2e303a", 1)
+def simulator(img, d, t):
+    X0, Y0, X1, Y1 = 930, 150, 1840, 790
+    card(d, X0, Y0, X1, Y1, "Pyrite simulator", TEAL, "ESP32-S3-WROOM-1-N8R2 model")
+    text(d, X0 + 30, Y0 + 82, "ESP32-S3 (emulated)", "semi", 28, TEAL, anchor="lm")
+    text(d, X1 - 30, Y0 + 82, "flash.bin", "mono", 17, MUTED, anchor="rm")
+    text(d, X0 + 30, Y0 + 116, "dual-core Xtensa LX7 · 240 MHz · 2 MB PSRAM", "mono", 17, MUTED, anchor="lm")
+    text(d, X0 + 30, Y0 + 142, "ESP-DL face detector · ESPDet-Pico · 224×224 · int8", "mono", 17, MUTED, anchor="lm")
 
-    # scrolling disassembly, program counter on the middle row
+    # inner-loop listing, the instruction now running highlighted, as in the inner-loop card
+    LX0, LY0, LX1 = X0 + 30, Y0 + 172, X1 - 30
+    card(d, LX0, LY0, LX1, LY0 + 262, "Inner loop of the detector", TEAL, "Xtensa + PIE")
     pc = 4 + 8.6 * (ramp(t, 5.2, 6.0) * 0.4 + max(0, min(t, 10.0) - 5.6)) if t > 5.2 else 4.0
-    pc = min(pc, len(DISASM) - 6)
-    ROWS, PITCH, lw, lh = 9, 25, cx1 - cx0 - 48, 9 * 25
-    lst = Image.new("RGB", (lw * S, lh * S), CHIP_BG)
-    ld = ImageDraw.Draw(lst, "RGBA")
+    pc = min(pc, len(DISASM) - 4)
     running = 5.3 < t < 10.0
-    for i in range(int(pc) - 5, int(pc) + 6):
-        if not 0 <= i < len(DISASM):
+    ROWS, PITCH = 7, 27
+    ly = LY0 + 64
+    lst = Image.new("RGB", (int((LX1 - LX0 - 30) * S), ROWS * PITCH * S), CARD)
+    ld = ImageDraw.Draw(lst, "RGBA")
+    top = max(0, int(pc + 0.5) - ROWS // 2)                                       # whole rows; the highlight steps
+    for i in range(top, top + ROWS):
+        if i >= len(DISASM):
             continue
-        addr, raw, op, args = DISASM[i]
-        y = (i - pc + ROWS // 2) * PITCH + PITCH / 2
+        addr, _, op, args = DISASM[i]
+        y = (i - top) * PITCH + PITCH / 2
         cur = i == int(pc + 0.5)
         if cur:
-            box(ld, 0, y - 12, lw, y + 12, 4, fill=ACCENT_DARK, a=0.22 if running else 0.1)
-        text(ld, 26, y, addr, "mono", 16, TERM_DIM, anchor="lm")
-        text(ld, 110, y, raw, "mono", 16, "#59636e", anchor="lm")
-        text(ld, 200, y, op, "monob" if "vmulas" in op else "mono", 16,
-             AMBER if "vmulas" in op else TEAL if op.startswith("ee.") else TERM_FG, anchor="lm")
-        text(ld, 420, y, args, "mono", 16, TERM_FG, anchor="lm")
-        if cur:
-            ld.polygon(sc(6, y - 7, 6, y + 7, 17, y), fill=rgba(ACCENT_DARK))
-    for i in range(12):                                                           # soft top/bottom edges
-        a = 1 - i / 12
-        box(ld, 0, i * 2, lw, i * 2 + 2, 0, fill=CHIP_BG, a=a)
-        box(ld, 0, lh - i * 2 - 2, lw, lh - i * 2, 0, fill=CHIP_BG, a=a)
-    img.paste(lst, (int((cx0 + 24) * S), int((cy0 + 134) * S)))
+            box(ld, 0, y - 13, LX1 - LX0 - 30, y + 13, 2, fill=TEAL, a=1 if running else 0.15)
+        fg = CARD if cur and running else INK
+        text(ld, 12, y, addr[2:-1], "mono", 18, CARD if cur and running else MUTED, anchor="lm")
+        text(ld, 110, y, op, "monom" if "vmulas" in op else "mono", 18, fg if cur and running else (TEAL if "vmulas" in op else INK), anchor="lm")
+        text(ld, 450, y, args, "mono", 18, fg, anchor="lm")
+    img.paste(lst, (int((LX0 + 15) * S), int(ly * S)))
 
-    # the two int8 vectors of the latest ee.vmulas.s8.accx, and its accumulator
+    # the latest ee.vmulas.s8.accx: two 16-lane int8 vectors and the accumulator they feed
     done = [i for i in range(int(pc + 0.5) + 1) if "vmulas" in DISASM[i][2]]
     vr = random.Random(len(done))
     q3 = [vr.randrange(-128, 128) for _ in range(16)]
     q0 = [vr.randrange(-128, 128) for _ in range(16)]
     acc = 0
-    for n in range(len(done) // 3 * 3, len(done) + 1):                             # accumulates, cleared every 3rd
+    for n in range(len(done) // 3 * 3, len(done) + 1):
         r = random.Random(n)
         a3 = [r.randrange(-128, 128) for _ in range(16)]
         acc += sum(x * y for x, y in zip(a3, [r.randrange(-128, 128) for _ in range(16)]))
     if not done:
         q3, q0, acc = [0] * 16, [0] * 16, 0
     flash = 1 - min(1, (pc + 0.5 - done[-1]) / 2.5) if done and running else 0
-    y = cy0 + 372
-    line(d, (cx0 + 24, y, cx1 - 24, y), "#2e303a", 1)
+    vy = LY0 + 296
+    text(d, LX0, vy - 8, "VECTOR LANES, LATEST MULTIPLY-ADD", "monom", 16, "#555b5e", anchor="lm")
     for row, (name, vals) in enumerate((("q3", q3), ("q0", q0))):
-        ry = y + 14 + row * 36
-        text(d, cx0 + 24, ry + 15, name, "monob", 17, AMBER, anchor="lm")
+        ry = vy + 16 + row * 40
+        text(d, LX0, ry + 16, name, "monom", 18, TEAL, anchor="lm")
         for i, v in enumerate(vals):
-            x = cx0 + 66 + i * 43
-            box(d, x, ry, x + 39, ry + 30, 4, fill="#2e303a")
-            box(d, x, ry, x + 39, ry + 30, 4, fill=AMBER, a=0.35 * flash)
-            text(d, x + 19.5, ry + 15, str(v), "mono", 13, TERM_FG, anchor="mm")
-    text(d, cx0 + 24, y + 106, "ee.vmulas.s8.accx", "monob", 17, AMBER, anchor="lm")
-    text(d, cx0 + 218, y + 106, f"ACCX += Σ q3[i] × q0[i]  =  {acc:,}", "mono", 17, TERM_FG, anchor="lm")
-    text(d, cx1 - 24, y + 106, "16 × int8", "mono", 15, TERM_DIM, anchor="rm")
+            x = LX0 + 44 + i * 49
+            box(d, x, ry, x + 45, ry + 32, 2, fill=CARD, outline=INK)
+            box(d, x, ry, x + 45, ry + 32, 2, fill=TEAL, a=0.18 * flash)
+            text(d, x + 22.5, ry + 16, str(v), "mono", 14, INK, anchor="mm")
+    text(d, LX0, vy + 124, "ee.vmulas.s8.accx", "monom", 19, TEAL, anchor="lm")
+    text(d, LX0 + 214, vy + 124, f"ACCX += sum(q3[i] × q0[i])  =  {acc:,}", "mono", 19, INK, anchor="lm")
+    text(d, LX1, vy + 124, "16 × int8", "mono", 16, MUTED, anchor="rm")
 
 
-def logo(d, x, y, s):
-    box(d, x, y, x + s, y + s, 0, fill="#000000")
-    box(d, x + s * 0.205, y + s * 0.205, x + s * 0.795, y + s * 0.795, s * 0.05, fill="#ffffff")
-    r = s * 0.045
-    d.ellipse(sc(x + s * 0.28 - r, y + s * 0.72 - r, x + s * 0.28 + r, y + s * 0.72 + r), fill=rgba("#000000"))
+def board(d, x0, y0, x1, y1, color, sim, a):
+    """A DevKit drawn in outline: solid ink for the real board, dashed teal for the model."""
+    def edge(p0, p1):
+        if not sim:
+            line(d, (*p0, *p1), INK, 1.5, a)
+            return
+        (ax, ay), (bx, by) = p0, p1
+        n = int(max(abs(bx - ax), abs(by - ay)) // 10)
+        for k in range(0, n, 2):
+            f0, f1 = k / n, min(1, (k + 1) / n)
+            line(d, (ax + (bx - ax) * f0, ay + (by - ay) * f0, ax + (bx - ax) * f1, ay + (by - ay) * f1), TEAL, 1.5, a)
+    if sim:
+        box(d, x0, y0, x1, y1, 8, fill="#e8f0ee", a=a)
+    for p0, p1 in (((x0, y0), (x1, y0)), ((x1, y0), (x1, y1)), ((x1, y1), (x0, y1)), ((x0, y1), (x0, y0))):
+        edge(p0, p1)
+    for x in range(int(x0) + 60, int(x1) - 20, 10):                               # header pins
+        d.rectangle(sc(x, y0 + 12, x + 3, y0 + 15), fill=rgba(INK if not sim else TEAL, a))
+        d.rectangle(sc(x, y1 - 15, x + 3, y1 - 12), fill=rgba(INK if not sim else TEAL, a))
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    box(d, cx - 46, cy - 34, cx + 46, cy + 34, 3, fill=color, a=a)                 # the S3
+    d.ellipse(sc(cx - 38, cy + 22, cx - 32, cy + 28), fill=rgba(CARD, a))
+    for side in (x0 - 8, x1 - 2):                                                  # the two USB ports
+        box(d, side, cy - 16, side + 10, cy + 16, 2, fill=CARD, outline=INK if not sim else TEAL, a=a)
 
 
-def frame(n, bg):
+def compare(d, t):
+    a = ramp(t, 12.4, 12.8)
+    rows = (("score", "0.893"), ("box", "[98 57 198 194]"), ("inference", None))
+    for k, (x0, title, dot, label, sim, timing) in enumerate((
+            (80, "Real board", AMBER, "ESP32-S3 · 2 MB PSRAM", False, "278 ms"),
+            (980, "Pyrite simulator", TEAL, "ESP32-S3-WROOM-1-N8R2 model", True, "191 ms"))):
+        ca = a * ramp(t, 12.4 + k * 0.2, 12.8 + k * 0.2)
+        x1 = x0 + 860
+        card(d, x0, 150, x1, 700, title, dot, label, ca)
+        board(d, x0 + 150, 230, x1 - 150, 450, dot if not sim else TEAL, sim, ca)
+        line(d, (x0, 490, x1, 490), RULE, 1, ca)
+        for i, (name, val) in enumerate(rows):
+            y = 540 + i * 50
+            text(d, x0 + 40, y, name, "mono", 22, MUTED, ca, "lm")
+            text(d, x0 + 220, y, val or timing, "monom", 22, INK, ca, "lm")
+    text(d, 960, 760, "Identical answers. The simulator's time is 32% fast here: it does not yet charge PSRAM store misses.",
+         "sans", 22, MUTED, ramp(t, 12.9, 13.3), "mm")
+
+
+def frame(n, bg, logo, big_logo):
     t = n / FPS
     img = bg.copy()
     d = ImageDraw.Draw(img, "RGBA")
-    text(d, W / 2, 78, "FACE DETECTION ON A SIMULATED ESP32-S3", "mono", 18, ACCENT, anchor="ma")
-    for t0, t1, s in HEADLINES:
-        text(d, W / 2, 118, s, "light", 56, TEXT_H, span(t, t0, t1) if t0 else 1 - ramp(t, t1 - 0.3, t1), "ma")
-    for t0, t1, s in FACTS:
-        text(d, W / 2, 938, s, "sans", FACT_SIZE, TEXT, span(t, t0, t1), "mm")
-
-    reveal = ramp(t, 1.9, 2.6)
-    if reveal > 0:
-        channel(d, t)
-        sim_window(img, d, t)
-        box(d, 560, 240, 1800, 880, 0, fill=BG, a=1 - reveal)
-    laptop(d, 614 * (1 - ramp(t, 1.8, 2.5)), t)
-    box(d, 98, 256, 596, 820, 0, fill=BG, a=0.55 * span(t, 5.4, 10.0, 0.4))           # laptop steps back
-
-    end = ramp(t, 12.4, 12.8)
-    if end > 0:
+    if t < 14.2:
+        if t < 12.4:
+            reveal = ramp(t, 1.9, 2.6)
+            if reveal > 0:
+                wire(d, t)
+                simulator(img, d, t)
+                box(d, 560, 140, 1860, 800, 0, fill=BG, a=1 - reveal)
+                d = ImageDraw.Draw(img, "RGBA")
+            x0 = 80 + 645 * (1 - ramp(t, 1.8, 2.5))
+            laptop(d, x0, t, span(t, 5.4, 10.0, 0.4))
+            out = ramp(t, 12.1, 12.4)
+            if out > 0:
+                box(d, 60, 130, 1860, 800, 0, fill=BG, a=out)
+        else:
+            compare(d, t)
+        chrome(img, d, t, logo)
+    end = ramp(t, 14.1, 14.4)
+    if end > 0:                                                                    # the closing wordmark
         img = Image.blend(img, bg, end)
-        d = ImageDraw.Draw(img, "RGBA")
-        text(d, W / 2, 78, "FACE DETECTION ON A SIMULATED ESP32-S3", "mono", 18, ACCENT, end, "ma")
-        for i, (f, size, c, y, s) in enumerate(END):
-            text(d, W / 2, y, s, f, size, c, ramp(t, 12.5 + i * 0.15, 12.9 + i * 0.15), "ma")
-        a = ramp(t, 13.1, 13.5)
-        w = width("simantic.com", "monob", 34)
-        x = (W - (64 + 20 + w)) / 2
-        if a > 0.01:
-            logo(d, x, 728, 64)
-            box(d, x - 1, 727, x + 65, 793, 0, fill=BG, a=1 - a)
-        text(d, x + 84, 760, "simantic.com", "monob", 34, TEXT_H, a, "lm")
+        x, y = (W * S - big_logo.width) // 2, (H * S - big_logo.height) // 2 - 40 * S
+        faded = big_logo.copy()
+        faded.putalpha(faded.getchannel("A").point(lambda v: int(v * ramp(t, 14.3, 14.7))))
+        img.paste(faded, (x, y), faded)
     return img
 
 
 def check():
-    for _, _, s in FACTS:
-        assert width(s, "sans", FACT_SIZE) <= FACT_MAX_W, f"fact too wide: {s}"
-    for _, _, s in HEADLINES:
-        assert width(s, "light", 56) <= FACT_MAX_W, f"headline too wide: {s}"
+    for _, _, _, head, sub in BEATS:
+        assert width(head, "semi", 46) <= CONTENT_X1 - 258, f"headline too wide: {head}"
+        assert width(sub, "sans", 28) <= CONTENT_X1 - 258, f"detail too wide: {sub}"
     assert all(len(l) == 4 for l in DISASM) and len(DISASM) >= 50
 
 
 if __name__ == "__main__":
     check()
     bg = background()
+    logo, big_logo = wordmark(44), wordmark(150, "#555555")
     if len(sys.argv) > 1:
         for arg in sys.argv[1:]:
-            p = os.path.join(os.path.dirname(OUT), f"still-{arg}.png")
-            frame(round(float(arg) * FPS), bg).resize((W, H), Image.LANCZOS).save(p)
+            p = os.path.join(HERE, f"still-{arg}.png")
+            frame(round(float(arg) * FPS), bg, logo, big_logo).resize((W, H), Image.LANCZOS).save(p)
             print(p)
         sys.exit()
     ff = subprocess.Popen(
@@ -401,6 +460,6 @@ if __name__ == "__main__":
          "-r", str(FPS), "-i", "-", "-vf", f"scale={W}:{H}:flags=lanczos", "-c:v", "libx264", "-preset", "slow",
          "-crf", "16", "-pix_fmt", "yuv420p", "-movflags", "+faststart", OUT], stdin=subprocess.PIPE)
     for n in range(FPS * SECONDS):
-        ff.stdin.write(frame(n, bg).tobytes())
+        ff.stdin.write(frame(n, bg, logo, big_logo).tobytes())
     ff.stdin.close()
     sys.exit(ff.wait())
