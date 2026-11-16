@@ -1,37 +1,61 @@
 #!/bin/sh
-# Edge AI on a simulated ESP32-S3. Usage: ./demo person | speech | live [seconds] | mics
-# Uses `sim` from PATH; SIM=/path/to/sim overrides.
+# Edge AI on a simulated ESP32-S3. Usage: ./demo person | speech | live [seconds] | mics | camera [seconds]
+# `real` after the name runs it on a board instead: ./demo person real, ./demo camera real [seconds].
+# Uses `sim` from PATH; SIM=/path/to/sim overrides. Real runs need PORT=<the board's COM port>;
+# FLASH_PORT=<its native USB port> flashes through that instead (a WCH COM chip failed to flash).
 set -eu
 SIM="${SIM:-sim}"
+PY="${PYTHON:-python3}"
 cd "$(dirname "$0")"
-command -v "$SIM" >/dev/null || { echo "sim not found. Install it: curl -fsSL https://simantic.com/install | sh" >&2; exit 1; }
-case "$("$SIM" --version 2>/dev/null)" in
-  "sim 0.10.0"*|"sim 0.9."*|"sim 0.8."*) echo "note: these demos need sim 0.10.1 or newer; found $("$SIM" --version)" >&2 ;;
-esac
-case "${1:-}:$("$SIM" --version 2>/dev/null)" in
-  speech:"sim 0.10.1"*|live:"sim 0.10.1"*) echo "note: sim 0.10.1 has no I2S microphone yet, so the chip will hear silence. It arrives in the release after 0.10.1." >&2 ;;
-esac
+name=${1:-}; [ $# -gt 0 ] && shift
+mode=sim; case "${1:-}" in real|sim) mode=$1; shift ;; esac
+if [ "$mode" = sim ]; then
+  command -v "$SIM" >/dev/null || { echo "sim not found. Install it: curl -fsSL https://simantic.com/install | sh" >&2; exit 1; }
+  case "$("$SIM" --version 2>/dev/null)" in
+    "sim 0.10.0"*|"sim 0.9."*|"sim 0.8."*) echo "note: these demos need sim 0.10.1 or newer; found $("$SIM" --version)" >&2 ;;
+  esac
+  case "$name:$("$SIM" --version 2>/dev/null)" in
+    speech:"sim 0.10.1"*|live:"sim 0.10.1"*) echo "note: sim 0.10.1 has no I2S microphone yet, so the chip will hear silence. It arrives in the release after 0.10.1." >&2 ;;
+  esac
+fi
 
 need_ffmpeg() {
   command -v ffmpeg >/dev/null || { echo "The live demo records with ffmpeg. Install it: brew install ffmpeg (macOS) or sudo apt install ffmpeg (Linux)" >&2; exit 1; }
 }
 
-run() {  # run <dir> <mcu> <board> <seconds> <lines to show> [extra sim flags]
+run() {  # run <dir> <mcu> <board> <seconds> <lines to show> [extra sim flags]; $console: the log's port
   dir=$1 mcu=$2 board=$3 secs=$4 show=$5; shift 5
   cd "$dir"
-  "$SIM" "$mcu" run "$@" --elf flash.bin --board "$board" --ascii uart0 --only-messages --timeout "$secs" 2>&1 \
+  "$SIM" "$mcu" run "$@" --elf flash.bin --board "$board" --ascii "${console:-uart0}" --only-messages --timeout "$secs" 2>&1 \
     | grep --line-buffered -E "$show"
 }
 
-case "${1:-}" in
-  person) run person-detection ESP32-S3FN8 console.board 2.7 'detect_image|Total time|person score|Elapsed' ;;
-  speech) run keyword-spotting ESP32-S3-WROOM-1-N16R8 mic.board 4 'Recording started|Detected  |Elapsed' ;;
-  mics)   need_ffmpeg
+real() {  # real <dir> <image> <peer> <baud> <seconds> <lines to show>
+  dir=$1 image=$2 peer=$3 baud=$4 secs=$5 show=$6
+  [ -n "${PORT:-}" ] || { echo "Set PORT to the board's COM (USB-UART) port, not its native USB port:
+  PORT=/dev/cu.usbmodemXXXX ./demo $name real
+Serial ports now: $(ls /dev/cu.usb* /dev/ttyUSB* /dev/ttyACM* 2>/dev/null | tr '\n' ' ')" >&2; exit 1; }
+  "$PY" -c 'import serial, esptool' 2>/dev/null || { echo "Real runs need pyserial and esptool: $PY -m pip install pyserial esptool" >&2; exit 1; }
+  echo "Flashing $dir/$image through ${FLASH_PORT:-$PORT} ..." >&2
+  "$PY" -m esptool --chip esp32s3 --port "${FLASH_PORT:-$PORT}" -b 460800 write_flash 0x0 "$dir/$image" >&2
+  "$PY" real.py "$PORT" "$baud" "$dir/$peer" "$secs" ${console:+"$FLASH_PORT"} | grep -a --line-buffered -E "$show"
+}
+
+case "$name $mode" in
+  "person real") real person-detection flash.bin console_peer.py 115200 6 'detect_image|Total time|person score' ;;
+  "camera real") need_ffmpeg
+          echo "Face the webcam. Ctrl-C to stop." >&2
+          [ -n "${FLASH_PORT:-}" ] || echo "Set FLASH_PORT (the native USB port) to see the chip's own log." >&2
+          console=usj real face-detection flash.bin camera.py 2000000 "${1:-60}" 'face_cam' ;;
+  "speech real"|"live real") echo "Keyword spotting needs an I2S microphone wired to the board; it runs in sim only." >&2; exit 2 ;;
+  "person sim") run person-detection ESP32-S3FN8 console.board 2.7 'detect_image|Total time|person score|Elapsed' ;;
+  "speech sim") run keyword-spotting ESP32-S3-WROOM-1-N16R8 mic.board 4 'Recording started|Detected  |Elapsed' ;;
+  "mics sim") need_ffmpeg
           if [ "$(uname)" = Darwin ]; then
             ffmpeg -hide_banner -f avfoundation -list_devices true -i "" 2>&1 | sed -n '/audio devices/,$p' | grep '\] \[' || echo "no microphones found" >&2
           else pactl list short sources; fi
           echo "Pick one with: MIC=<number or name> ./demo live" >&2 ;;
-  live)   if [ -z "${MIC_CMD:-}" ]; then   # MIC_CMD set = you know what you are doing, no check
+  "live sim") if [ -z "${MIC_CMD:-}" ]; then   # MIC_CMD set = you know what you are doing, no check
             need_ffmpeg
             if [ "$(uname)" = Darwin ]; then in="-f avfoundation -i :${MIC:-default}"; else in="-f pulse -i ${MIC:-default}"; fi
             # One second of sound first: a missing or blocked microphone is otherwise just silence.
@@ -45,6 +69,10 @@ case "${1:-}" in
             export MIC_CMD="ffmpeg -loglevel error $in -ar 16000 -ac 1 -f s16le -"
           fi
           echo "Microphone works. Starting the chip; say yes or no once it prints 'Audio Recording started'. Ctrl-C to stop." >&2
-          run keyword-spotting ESP32-S3-WROOM-1-N16R8 live.board "${2:-60}" 'Recording started|Detected  |mic level' --real-time ;;
-  *) echo "usage: ./demo person | speech | live [seconds] | mics" >&2; exit 2 ;;
+          run keyword-spotting ESP32-S3-WROOM-1-N16R8 live.board "${1:-60}" 'Recording started|Detected  |mic level' --real-time ;;
+  "camera sim") need_ffmpeg
+          echo "Face the webcam. Close the video window or Ctrl-C to stop." >&2
+          console=usj run face-detection ESP32-S3-WROOM-1-N8R2 camera.board "${1:-60}" 'face_cam' --real-time ;;
+  *) echo "usage: ./demo person | speech | live [seconds] | mics | camera [seconds]
+       ./demo person real | camera real [seconds]   (on a board; PORT=<its COM port>)" >&2; exit 2 ;;
 esac

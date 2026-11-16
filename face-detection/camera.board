@@ -1,0 +1,4 @@
+// This computer's webcam on UART0 (camera.py), where a DevKit's COM port is; app_main.cpp sets 2 Mbaud.
+camera: UART.ScriptedUartPeer @ uart0
+    file: "camera.py"
+    baudRate: 2000000
