@@ -4,8 +4,12 @@ Espressif's TensorFlow Lite Micro examples, running on the ESP32-S3's vector ins
 the [Simantic](https://simantic.com) simulator. No board, no toolchain: the firmware images are
 in this repo.
 
+[![Face detection on a simulated ESP32-S3: how the inference runs inside the emulated chip, not the laptop](media/emulator-explainer.gif)](media/emulator-explainer.mp4)
+
 ```sh
-git clone https://github.com/simantic-dev/esp32-s3-edge-ai && cd esp32-s3-edge-ai && ./demo person
+git clone https://github.com/simantic-dev/esp32-s3-edge-ai && cd esp32-s3-edge-ai
+./demo camera    # face detection on your webcam (needs ffmpeg)
+./demo person    # person detection on ten test images
 ```
 
 You need `sim` 0.10.1 or newer and a free account (`speech` and `live` need the release after
