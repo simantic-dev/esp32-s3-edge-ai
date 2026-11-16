@@ -36,10 +36,12 @@ case "${1:-}" in
             [ "$heard" -gt 0 ] || { echo "No sound from the microphone. Check that:
   - one is plugged in (./demo mics lists them; MIC=<number> ./demo live picks one)
   - on a Mac, your terminal is allowed to use it:
-    System Settings > Privacy & Security > Microphone, then restart the terminal" >&2; exit 1; }
+    System Settings > Privacy & Security > Microphone, then restart the terminal
+  - on WSL2, WSLg is running (echo \$PULSE_SERVER prints a path) and Windows allows it:
+    Settings > Privacy & security > Microphone > Let desktop apps access your microphone" >&2; exit 1; }
             export MIC_CMD="ffmpeg -loglevel error $in -ar 16000 -ac 1 -f s16le -"
           fi
           echo "Microphone works. Starting the chip; say yes or no once it prints 'Audio Recording started'. Ctrl-C to stop." >&2
-          run keyword-spotting ESP32-S3-WROOM-1-N16R8 live.board "${2:-60}" 'Recording started|Detected  ' --real-time ;;
+          run keyword-spotting ESP32-S3-WROOM-1-N16R8 live.board "${2:-60}" 'Recording started|Detected  |mic level' --real-time ;;
   *) echo "usage: ./demo person | speech | live [seconds] | mics" >&2; exit 2 ;;
 esac

@@ -61,15 +61,34 @@ headset, webcam. `./demo live` records one second first and tells you if it hear
 you find out about a missing microphone or a blocked permission before the chip boots. Then wait
 for `Audio Recording started` and speak.
 
+```mermaid
+flowchart LR
+  subgraph host["Your computer"]
+    mic(["Microphone"]) --> ff["ffmpeg<br/>16 kHz mono"] --> py["mic_live.py<br/>plays the I2S microphone"]
+    term(["Terminal"])
+  end
+  subgraph chip["sim: simulated ESP32-S3"]
+    i2s["I2S0 receiver<br/>BCLK GPIO41, WS GPIO42, DIN GPIO2"] --> fw["micro_speech firmware<br/>TFLite Micro + esp-nn"] --> uart["UART0"]
+  end
+  py -- "32-bit sample frames" --> i2s
+  uart -- "Detected yes" --> term
+```
+
+`./demo speech` is the same picture with `mic.py` reading WAV files in place of the microphone
+and ffmpeg. The firmware is identical and cannot tell which one it is talking to.
+
+A `mic level` bar prints once a second with the loudest sample the chip received. It should
+jump past the middle when you speak.
+
 - Wrong microphone? `./demo mics` lists them, `MIC=1 ./demo live` picks one.
-- Too quiet? `MIC_GAIN=4 ./demo live`.
+- Bar barely moves? `MIC_GAIN=4 ./demo live`.
 - The model knows two words, "yes" and "no".
 - The stock example classifies back-to-back one-second windows, so a word that straddles two
   windows can be missed. Say it again.
 
 `./demo live 300` runs for five minutes instead of one. `MIC_CMD` replaces the capture command
-entirely (anything that writes 16 kHz mono s16le to stdout). Linux uses PulseAudio and has not
-been tried.
+entirely (anything that writes 16 kHz mono s16le to stdout). Linux uses PulseAudio (`sudo apt install ffmpeg pulseaudio-utils`); WSL2 gets the Windows
+microphone through WSLg. Neither has been tried.
 
 ## How it is wired
 
