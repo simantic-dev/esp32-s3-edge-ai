@@ -8,7 +8,8 @@ in this repo.
 git clone https://github.com/simantic-dev/esp32-s3-edge-ai && cd esp32-s3-edge-ai && ./demo person
 ```
 
-You need `sim` 0.10.1 or newer and a free account:
+You need `sim` 0.10.1 or newer and a free account (`speech` and `live` need the release after
+0.10.1, which adds the I2S microphone):
 
 ```sh
 curl -fsSL https://simantic.com/install | sh
