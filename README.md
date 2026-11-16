@@ -189,6 +189,11 @@ is now the longer of the two and sets the pace; on the board the inference (287 
 the simulator runs this model's inference 32% fast (the PSRAM store costs below). The prediction
 "the chip stops waiting for the wire" held; the exact millisecond is partly luck.
 
+The board's 290 ms is its steady pace, not its average. Over a 25 s run it averaged 423 ms (2.4
+fps): at 2 Mbaud a few bytes of a frame are sometimes lost, and the chip waits out a 2 s read
+timeout before asking again. The simulated link never loses a byte, so the simulator cannot show
+this; a lossy link for the camera peer is the next test to add.
+
 Wall-clock speed is another matter: the simulator runs this code about 3x slower than real time on
 an M-series Mac, so the simulated demo shows about one answer a second (0.94), and the change cost
 it a little (from 1.3), since the UART interrupts that now run during inference are simulated too.
