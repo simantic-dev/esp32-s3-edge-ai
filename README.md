@@ -26,6 +26,14 @@ curl -fsSL https://simantic.com/install | sh
 
 ![person detection](media/person-detection.gif)
 
+```mermaid
+flowchart LR
+  fw["ESP32-S3FN8<br/>person_detection firmware (TFLite Micro)"]
+  con["console_peer.py<br/>console.board, scripted UART"]
+  con -- "UART0 115200: detect_image n" --> fw
+  fw -- "esp> prompt, scores, timings" --> con
+```
+
 Espressif's `person_detection` example with no source edits. The model is TensorFlow's person
 classifier (MobileNet v1, 96x96 grayscale, int8): person or no person, no boxes. A twelve-line
 Python script on the other end of UART0 types `detect_image 0` to `detect_image 9` at the
@@ -46,6 +54,14 @@ you have the board, flash it and compare: `esptool.py write_flash 0x0 person-det
 
 ![keyword spotting](media/keyword-spotting.gif)
 
+```mermaid
+flowchart LR
+  mic["mic.py, mic.board<br/>scripted I2S mic, plays WAV clips"]
+  fw["ESP32-S3-WROOM-1-N16R8<br/>micro_speech firmware (TFLite Micro)"]
+  mic -- "I2S0 16 kHz, 32-bit slots, GPIO2 data" --> fw
+  fw -- "Recording started, Detected yes/no" --> out(["UART0 console"])
+```
+
 Espressif's `micro_speech` example, also unedited. It has no test mode: it configures I2S0 at
 16 kHz and listens to a microphone. `keyword-spotting/mic.py` is that microphone, a Python
 script on the I2S data line that plays the example's own test clips. Four seconds of audio take
@@ -58,6 +74,16 @@ This one has not been run on a board. The detections are the simulator's.
 
 Needs `ffmpeg`, and a microphone (a Mac mini has none built in). Wait for
 `Audio Recording started`, then speak.
+
+```mermaid
+flowchart LR
+  ff["ffmpeg (MIC_CMD) on this computer's mic<br/>16 kHz mono s16le"]
+  mic["mic_live.py, live.board<br/>scripted I2S mic"]
+  fw["ESP32-S3-WROOM-1-N16R8<br/>micro_speech firmware"]
+  ff -- "stdout pipe" --> mic
+  mic -- "I2S0 16 kHz" --> fw
+  fw -- "Detected yes / no" --> out(["UART0 console"])
+```
 
 - The model knows two words, "yes" and "no".
 - The stock example classifies back-to-back one-second windows, so a word that straddles two
