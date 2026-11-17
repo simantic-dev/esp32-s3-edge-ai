@@ -4,7 +4,7 @@
 // and on a board (./demo camera real); the log goes to the native USB port (build.sh).
 // Protocol on UART0 (camera.py is the other end):
 //   chip -> "F\n"                       ask for a frame
-//   host -> W*H*3 bytes                 RGB888, row-major
+//   host -> W*H bytes                   8-bit gray, row-major (expanded to RGB888 here)
 //   chip -> "B x1 y1 x2 y2 score\n" ... one line per face, then "E <ms>\n"
 // The chip asks for the next frame before it runs the detector on this one, so the next frame's
 // bytes arrive in the UART driver's buffer while it computes, as a camera driver double-buffers:
@@ -20,8 +20,8 @@
 #define CAM_BAUD 2000000   // a DevKit's WCH CH343 COM chip does 2 Mbaud; must match camera.board and demo
 #define CAM_TX 43
 #define CAM_RX 44
-#define W 160              // the model resizes to its own 224x224 input on chip
-#define H 120
+#define W 96               // gray square: 9,216 bytes on the wire instead of 57,600 for 160x120 RGB;
+#define H 96               // the model resizes to its own 224x224 input on chip
 
 static const char *TAG = "face_cam";
 
@@ -39,6 +39,7 @@ extern "C" void app_main(void)
     ESP_ERROR_CHECK(uart_param_config(CAM_UART, &cfg));
     ESP_ERROR_CHECK(uart_set_pin(CAM_UART, CAM_TX, CAM_RX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
 
+    auto *gray = (uint8_t *)heap_caps_malloc(W * H, MALLOC_CAP_INTERNAL);
     auto *buf = (uint8_t *)heap_caps_malloc(W * H * 3, MALLOC_CAP_SPIRAM);
     dl::image::img_t img = {.data = buf, .width = W, .height = H, .pix_type = dl::image::DL_IMAGE_PIX_TYPE_RGB888};
     HumanFaceDetect *detect = new HumanFaceDetect();
@@ -47,20 +48,24 @@ extern "C" void app_main(void)
     uart_write_bytes(CAM_UART, "F\n", 2);
     for (;;) {
         int got = 0;
-        while (got < W * H * 3) {
-            int n = uart_read_bytes(CAM_UART, buf + got, W * H * 3 - got, pdMS_TO_TICKS(2000));
+        while (got < W * H) {
+            int n = uart_read_bytes(CAM_UART, gray + got, W * H - got, pdMS_TO_TICKS(2000));
             if (n <= 0) {   // host stalled or a byte was lost: drop the partial frame, ask again
                 ESP_LOGW(TAG, "frame timeout at %d bytes", got);
                 break;
             }
             got += n;
         }
-        if (got < W * H * 3) {
+        if (got < W * H) {
             uart_flush_input(CAM_UART);
             uart_write_bytes(CAM_UART, "F\n", 2);
             continue;
         }
         uart_write_bytes(CAM_UART, "F\n", 2);   // the next frame, while this one is detected
+
+        // esp-dl has no gray-to-RGB converter and the model takes RGB888
+        for (int i = 0; i < W * H; i++)
+            buf[3 * i] = buf[3 * i + 1] = buf[3 * i + 2] = gray[i];
 
         int64_t t0 = esp_timer_get_time();
         auto &faces = detect->run(img);
