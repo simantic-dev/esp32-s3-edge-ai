@@ -12,8 +12,8 @@ git clone https://github.com/simantic-dev/esp32-s3-edge-ai && cd esp32-s3-edge-a
 ./demo person    # person detection on ten test images
 ```
 
-You need `sim` 0.10.1 or newer and a free account (`speech` and `live` need the release after
-0.10.1, which adds the I2S microphone):
+You need `sim` 0.10.1 or newer and a free account (`speech` and `live` need 0.10.2,
+which adds the I2S microphone; `sim update` gets it):
 
 ```sh
 curl -fsSL https://simantic.com/install | sh
