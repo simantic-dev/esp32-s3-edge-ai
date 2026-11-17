@@ -15,7 +15,7 @@ if [ "$mode" = sim ]; then
     "sim 0.10.0"*|"sim 0.9."*|"sim 0.8."*) echo "note: these demos need sim 0.10.1 or newer; found $("$SIM" --version)" >&2 ;;
   esac
   case "$name:$("$SIM" --version 2>/dev/null)" in
-    speech:"sim 0.10.1"*|live:"sim 0.10.1"*) echo "note: sim 0.10.1 has no I2S microphone yet, so the chip will hear silence. It arrives in the release after 0.10.1." >&2 ;;
+    speech:"sim 0.10.1"*|live:"sim 0.10.1"*) echo "note: sim 0.10.1 has no I2S microphone yet, so the chip will hear silence. Run `sim update` to get 0.10.2." >&2 ;;
   esac
 fi
 
