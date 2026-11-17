@@ -4,7 +4,7 @@ at the pace the microphone makes them.
 MIC_CMD overrides the capture command (anything writing s16le 16 kHz mono to stdout).
 MIC_GAIN scales the samples (default 1.0); output is clipped to int16 because the example's
 >>14 would wrap a louder word."""
-import array, os, shlex, subprocess, sys, threading
+import array, math, os, shlex, subprocess, sys, threading
 
 CMD = os.environ.get("MIC_CMD", "ffmpeg -loglevel error -f avfoundation -i :default -ar 16000 -ac 1 -f s16le -")
 GAIN = float(os.environ.get("MIC_GAIN", "1"))
@@ -39,6 +39,7 @@ class Peer:
             self.peak = max(self.peak, abs(s))
         self.frames += frames
         if self.frames >= 16000:   # once a second of chip time: show what the chip is hearing
-            print(f"mic level |{'#' * (self.peak * 20 // 32768):<20}|", file=sys.stderr, flush=True)
+            db = 20 * math.log10(max(self.peak, 1) / 32768)   # bar spans -60..0 dBFS
+            print(f"mic level |{'#' * max(0, min(20, int((db + 60) / 3))):<20}| {db:4.0f} dB", file=sys.stderr, flush=True)
             self.frames = self.peak = 0
         return bytes(out)

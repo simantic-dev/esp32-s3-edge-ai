@@ -113,11 +113,11 @@ flowchart LR
 `./demo speech` is the same picture with `mic.py` reading WAV files in place of the microphone
 and ffmpeg. The firmware is identical and cannot tell which one it is talking to.
 
-A `mic level` bar prints once a second with the loudest sample the chip received. It should
-jump past the middle when you speak.
+A `mic level` bar prints once a second with the loudest sample the chip received, from -60 to 0 dB.
+Speech should fill about two thirds of it.
 
 - Wrong microphone? `./demo mics` lists them, `MIC=1 ./demo live` picks one.
-- Bar barely moves? `MIC_GAIN=4 ./demo live`.
+- Quiet bar? Leave the gain alone: the model normalizes loudness itself, and in a test it caught 5 of 6 words at the default gain but missed every "no" with `MIC_GAIN=8`.
 ```mermaid
 flowchart LR
   ff["ffmpeg (MIC_CMD) on this computer's mic<br/>16 kHz mono s16le"]
