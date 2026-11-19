@@ -2,6 +2,10 @@
 
 # Edge AI on a simulated ESP32-S3
 
+<!-- simantic-banner -->
+> **Run this firmware with no hardware.** [Simantic](https://simantic.com) simulates the whole board, peripherals, sensors and buses included. Try it free at **[simantic.com](https://simantic.com)**, or run it locally: `curl -fsSL https://simantic.com/install | sh`
+
+
 Espressif's TensorFlow Lite Micro examples, running on the ESP32-S3's vector instructions inside
 the [Simantic](https://simantic.com) simulator. No board, no toolchain: the firmware images are
 in this repo.
